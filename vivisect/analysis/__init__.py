@@ -70,7 +70,7 @@ def addAnalysisModules(vw):
 
         vw.addAnalysisModule('vivisect.analysis.generic.strconst')
 
-    elif fmt == 'elf': # ELF ########################################################
+    elif fmt in ('elf', 'cgc'): # ELF ########################################################
 
         vw.addAnalysisModule("vivisect.analysis.elf")
 
@@ -103,6 +103,9 @@ def addAnalysisModules(vw):
             vw.addFuncAnalysisModule("vivisect.analysis.amd64.emulation")
         elif arch == 'arm':
             vw.addFuncAnalysisModule("vivisect.analysis.arm.emulation")
+
+        if plat == 'decree':
+            vw.addFuncAnalysisModule("vivisect.analysis.decree.emulation")
 
         # Find import thunks
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
