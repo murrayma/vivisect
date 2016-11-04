@@ -17,7 +17,11 @@ ARCH_THUMB16     = 4 << 16
 ARCH_THUMB       = 5 << 16
 ARCH_MSP430      = 6 << 16
 ARCH_H8          = 7 << 16
+#ARCH_ARMV7BE     = 8 << 16
+#ARCH_THUMBBE     = 9 << 16
 ARCH_MASK        = 0xffff0000   # Masked into IF_FOO and BR_FOO values
+
+ARCHCOUNT = 8 #10
 
 arch_names = {
     ARCH_DEFAULT:   'default',
@@ -28,6 +32,8 @@ arch_names = {
     ARCH_THUMB:     'thumb2',
     ARCH_MSP430:    'msp430',
     ARCH_H8:        'h8',
+    #ARCH_ARMV7BE:   'armb',
+    #ARCH_THUMBBE:   'thumb2be',
 }
 
 arch_by_name = {
@@ -35,13 +41,16 @@ arch_by_name = {
     'i386':     ARCH_I386,
     'amd64':    ARCH_AMD64,
     'arm':      ARCH_ARMV7,
+    #'armb':     ARCH_ARMV7BE,
     'armv6l':   ARCH_ARMV7,
     'armv7l':   ARCH_ARMV7,
     'thumb16':  ARCH_THUMB16,
     'thumb2':   ARCH_THUMB,
+    #'thumb2be': ARCH_THUMBBE,
     'msp430':   ARCH_MSP430,
     'h8':       ARCH_H8,
 }
+
 
 # Instruction flags (The first 8 bits are reserved for arch independant use)
 IF_NOFALL = 0x01 # Set if this instruction does *not* fall through
@@ -78,6 +87,7 @@ class ArchitectureModule:
         self._arch_id = getArchByName(archname)
         self._arch_name = archname
         self._arch_maxinst = maxinst
+        self._endian = ENDIAN_LSB
 
     def getArchId(self):
         '''
@@ -91,6 +101,21 @@ class ArchitectureModule:
         in this module.
         '''
         return self._arch_name
+
+    def getEndian(self):
+        '''
+        Every architecture stores numbers either Most-Significant-Byte-first (MSB)
+        or Least-Significant-Byte-first (LSB).  Most modern architectures are 
+        LSB, however many legacy systems still use MSB architectures.
+        '''
+        return self._endian
+
+    def setEndian(self, endian):
+        '''
+        Set the architecture endianness.  Subclasses should make sure this is handled
+        correctly in any Disasm object(s)
+        '''
+        self._endian = endian
 
     def archGetBreakInstr(self):
         """
@@ -1284,9 +1309,17 @@ def getArchModule(name=None):
         import envi.archs.arm as e_arm
         return e_arm.ArmModule()
 
+    elif name in ( 'armb', 'armv6b', 'armv7b' ):
+        import envi.archs.arm as e_arm
+        #return e_arm.ArmBEModule()
+
     elif name in ( 'thumb', 'thumb16', 'thumb2' ):
         import envi.archs.thumb16 as e_thumb
         return e_thumb.ThumbModule()
+
+    elif name in ( 'thumbbe', 'thumb16be', 'thumb2be' ):
+        import envi.archs.thumb16 as e_thumb
+        #return e_thumb.ThumbBEModule()
 
     elif name in ( 'msp430', ):
         import envi.archs.msp430 as e_msp430
@@ -1311,16 +1344,22 @@ def getArchModules(default=ARCH_DEFAULT):
     import envi.archs.thumb16 as e_thumb16
     import envi.archs.msp430 as e_msp430
 
-    archs = [ None, ]
+
+    arch_modules = {
+        ARCH_I386:      e_i386.i386Module(),
+        ARCH_AMD64:     e_amd64.Amd64Module(),
+        ARCH_ARMV7:     e_arm.ArmModule(),
+        #ARCH_ARMV7BE:   e_arm.ArmBEModule(),
+        ARCH_THUMB:     e_thumb16.ThumbModule(),
+        #ARCH_THUMBBE:   e_thumb16.ThumbBEModule(),
+        ARCH_THUMB16:   e_thumb16.Thumb16Module(),
+        ARCH_MSP430:    e_msp430.Msp430Module(),
+        ARCH_H8:        e_h8.H8Module(),
+    }
 
     # These must be in ARCH_FOO order
-    archs.append( e_i386.i386Module() )
-    archs.append( e_amd64.Amd64Module() )
-    archs.append( e_arm.ArmModule() )
-    archs.append( e_thumb16.Thumb16Module() )
-    archs.append( e_thumb16.ThumbModule() )
-    archs.append( e_msp430.Msp430Module() )
-    archs.append( e_h8.H8Module() )
+    archs = [ None, ]
+    archs.extend( [arch_modules.get(archidx<<16) for archidx in range(1, ARCHCOUNT)] )
 
     # Set the default module ( or None )
     archs[ ARCH_DEFAULT ] = archs[ default >> 16 ]

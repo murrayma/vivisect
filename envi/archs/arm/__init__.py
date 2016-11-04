@@ -46,6 +46,25 @@ class ArmModule(envi.ArchitectureModule):
     def getEmulator(self):
         return ArmEmulator()
 
+    def setEndian(self, endian):
+        self._endian = endian
+        self._arch_dis.setEndian(endian)
+        self._arch_thumb_dis.setEndian(endian)
+
+    def getEndian(self):
+        return self._endian
+
+
+#class ArmBEModule(ArmModule):
+#    def __init__(self, name='ARMv7A_BE'):
+#        import envi.archs.thumb16.disasm as eatd
+#        envi.ArchitectureModule.__init__(self, name, maxinst=4)
+#        self._arch_reg = self.archGetRegCtx()
+#        self._arch_dis = ArmBEDisasm()
+#        self._arch_dis.setArchMask(name)
+#        self._arch_thumb_dis = eatd.ThumbBEDisasm()
+
+
 class ThumbModule(envi.ArchitectureModule):
     '''
     This architecture module will *not* shift to ARM mode.  Evar.
@@ -83,5 +102,15 @@ class ThumbModule(envi.ArchitectureModule):
 
     def getEmulator(self):
         return ArmEmulator()
+
+
+#class ThumbBEModule(ThumbModule):
+    #def __init__(self, name='ARMv7A_BE'):
+        #import envi.archs.thumb16.disasm as eatd
+        #envi.ArchitectureModule.__init__(self, name, maxinst=4)
+        #self._arch_reg = self.archGetRegCtx()
+        #self._arch_dis = eatd.ThumbBEDisasm(doModeSwitch=False)
+        ##armVersion mask should be set here if needed
+        
 
 from envi.archs.arm.emu import *

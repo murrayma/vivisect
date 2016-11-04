@@ -7,14 +7,7 @@ import envi.bits as e_bits
 
 from envi.bits import binary
 
-#import sys
-#import struct
-#import traceback
-
-#import envi
-#import envi.bits as e_bits
-#from envi.bits import binary
-
+from envi.const import *
 from envi.archs.arm.const import *
 from envi.archs.arm.regs import *
 
@@ -1504,7 +1497,7 @@ class ArmOpcode(envi.Opcode):
                 if operval & 3:
                     flags |= envi.ARCH_THUMB16
                 else:
-                    flags |= envi.ARCH_ARM
+                    flags |= self._def_arch
 
             # if we don't know that it's thumb, default to "ARCH_DEFAULT"
             else:
@@ -2670,9 +2663,6 @@ class ArmDbgHintOption(ArmOperand):
         return "#%d"%self.val
 
 
-ENDIAN_LSB = 0
-ENDIAN_MSB = 1
-
 class ArmDisasm:
     fmt = None
     #This holds the current running Arm instruction version and mask
@@ -2690,7 +2680,11 @@ class ArmDisasm:
         return self._archVersionMask
 
     def setEndian(self, endian):
+        self.endian = endian
         self.fmt = ("<I", ">I")[endian]
+
+    def getEndian(self):
+        return self.endian
 
     def disasm(self, bytez, offset, va):
         """
@@ -2757,6 +2751,11 @@ class ArmDisasm:
         #print "ienc_parser index, routine: %d, %s" % (enc, ienc_parsers[enc])
         opcode, mnem, olist, flags = ienc_parsers[enc](opval, va+8)
         return opcode, mnem, olist, flags
+
+#class ArmBEDisasm(ArmDisasm):
+#    def __init__(self, endian=ENDIAN_MSB, mask = 'ARMv7A_BE'):
+#        self.setArchMask(mask)
+#        self.setEndian(endian)
 
 
 if __name__ == '__main__':

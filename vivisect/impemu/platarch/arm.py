@@ -13,6 +13,7 @@ class ArmWorkspaceEmulator(v_i_emulator.WorkspaceEmulator, e_arm.ArmEmulator):
         e_arm.ArmEmulator.__init__(self)
         v_i_emulator.WorkspaceEmulator.__init__(self, vw, logwrite=logwrite, logread=logread)
         self.setMemArchitecture(envi.ARCH_ARMV7)
+        self.setEndian(vw.arch._arch_dis.getEndian())
 
     def runFunction(self, funcva, stopva=None, maxhit=None, maxloop=None, tmode=None):
         """

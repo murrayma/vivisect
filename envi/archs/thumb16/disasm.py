@@ -66,7 +66,7 @@ def rm_rn_rt(va, value):
     rn = shmaskval(value, 3, 0x7) # base
     rm = shmaskval(value, 6, 0x7) # offset
     oper0 = ArmRegOper(rt, va=va)
-    oper1 = ArmRegOffsetOper(rn, rm, va, pubwl=0x18, psize=psize)
+    oper1 = ArmRegOffsetOper(rn, rm, va, pubwl=0x18)
     return oper0,oper1
 
 def imm54_rn_rt(va, value):
@@ -74,7 +74,7 @@ def imm54_rn_rt(va, value):
     rn = shmaskval(value, 3, 0x7)
     rt = shmaskval(value, 0, 0x7)
     oper0 = ArmRegOper(rt, va=va)
-    oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18, psize=psize)
+    oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18)
     return oper0,oper1
 
 def imm55_rn_rt(va, value):
@@ -82,7 +82,7 @@ def imm55_rn_rt(va, value):
     rn = shmaskval(value, 3, 0x7)
     rt = shmaskval(value, 0, 0x7)
     oper0 = ArmRegOper(rt, va=va)
-    oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18, psize=psize)
+    oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18)
     return oper0,oper1
 
 def imm56_rn_rt(va, value):
@@ -90,7 +90,7 @@ def imm56_rn_rt(va, value):
     rn = shmaskval(value, 3, 0x7)
     rt = shmaskval(value, 0, 0x7)
     oper0 = ArmRegOper(rt, va=va)
-    oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18, psize=psize)
+    oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18)
     return oper0,oper1
 
 def rd_sp_imm8(va, value): # add
@@ -98,7 +98,7 @@ def rd_sp_imm8(va, value): # add
     imm = shmaskval(value, 0, 0xff) * 4
     oper0 = ArmRegOper(rd, va=va)
     # pre-compute PC relative addr
-    oper1 = ArmImmOffsetOper(REG_SP, imm, (va&0xfffffffc)+4, pubwl=0x18, psize=psize)
+    oper1 = ArmImmOffsetOper(REG_SP, imm, (va&0xfffffffc)+4, pubwl=0x18)
     return oper0,oper1
 
 def rd_pc_imm8(va, value):  # add
@@ -113,7 +113,7 @@ def rt_pc_imm8(va, value): # ldr
     rt = shmaskval(value, 8, 0x7)
     imm = e_bits.signed((value & 0xff), 1) << 2
     oper0 = ArmRegOper(rt, va=va)
-    oper1 = ArmImmOffsetOper(REG_PC, imm, (va&0xfffffffc), psize=psize)
+    oper1 = ArmImmOffsetOper(REG_PC, imm, (va&0xfffffffc))
     return oper0,oper1
 
 
@@ -691,7 +691,7 @@ def strex_32(va, val1, val2):
 
     oper0 = ArmRegOper(rd, va=va)
     oper1 = ArmRegOper(rt, va=va)
-    oper2 = ArmImmOffsetOper(rn, imm8<<2, va=va, psize=psize)
+    oper2 = ArmImmOffsetOper(rn, imm8<<2, va=va, psize=4)
 
     opers = (oper0, oper1, oper2)
     flags = 0
@@ -703,7 +703,7 @@ def ldrex_32(va, val1, val2):
     imm8 = val2 & 0xff
 
     oper0 = ArmRegOper(rt, va=va)
-    oper1 = ArmImmOffsetOper(rn, imm8<<2, va=va, psize=psize)
+    oper1 = ArmImmOffsetOper(rn, imm8<<2, va=va, psize=4)
 
     opers = (oper0, oper1)
     flags = 0
@@ -718,7 +718,7 @@ def ldrd_imm_32(va, val1, val2):
 
     oper0 = ArmRegOper(rt, va=va)
     oper1 = ArmRegOper(rt2, va=va)
-    oper2 = ArmImmOffsetOper(rn, imm8<<2, va=va, pubwl=pubwl, psize=psize)
+    oper2 = ArmImmOffsetOper(rn, imm8<<2, va=va, pubwl=pubwl, psize=4)
 
     opers = (oper0, oper1, oper2)
     return None, None, opers, flags
@@ -1005,7 +1005,7 @@ def coproc_simd_32(va, val1, val2):
             opers = (
                 ArmCoprocOper(coproc),
                 ArmCoprocRegOper(CRd),
-                ArmImmOffsetOper(Rn, offset*4, va, pubwl=pudwl, psize=psize),
+                ArmImmOffsetOper(Rn, offset*4, va, pubwl=pudwl),
             )
             
             opcode = (IENC_COPROC_LOAD << 16)
@@ -1124,7 +1124,7 @@ def coproc_simd_32(va, val1, val2):
                     VRd = rctx.getRegisterIndex(rbase % d)
                     opers = (
                             ArmRegOper(VRd, va=va, oflags=oflags),
-                            ArmImmOffsetOper(Rn, imm32, va=va, pubwl=pudwl, psize=psize),
+                            ArmImmOffsetOper(Rn, imm32, va=va, pubwl=pudwl),
                             )
 
                 else:
@@ -1836,13 +1836,21 @@ class ThumbDisasm:
     _opclass = ThumbOpcode
     def __init__(self, doModeSwitch=True):
         self._doModeSwitch = doModeSwitch
+        self.hfmt = "<H"
+
+    def setEndian(self, endian):
+        self.endian = endian
+        self.hfmt = ("<H", ">H")[endian]
+
+    def getEndian(self):
+        return self.endian
 
     def disasm(self, bytez, offset, va, trackMode=True):
         oplen = None
         flags = 0
         va &= -2
         offset &= -2
-        val, = struct.unpack_from("<H", bytez, offset)
+        val, = struct.unpack_from(self.hfmt, bytez, offset)
         try:
             opcode, mnem, opermkr, flags = self._tree.getInt(val, 16)
             #print opcode, mnem, opermkr, flags
@@ -1853,7 +1861,7 @@ class ThumbDisasm:
 
         #print "FLAGS: ", hex(va),hex(flags)
         if flags & IF_THUMB32:
-            val2, = struct.unpack_from("<H", bytez, offset+2)
+            val2, = struct.unpack_from(self.hfmt, bytez, offset+2)
             #print "============" + repr( opermkr(va+4, val, val2) )
             #print opermkr
             nopcode, nmnem, olist, nflags = opermkr(va+4, val, val2)
@@ -1885,6 +1893,11 @@ class ThumbDisasm:
         op = ThumbOpcode(va, opcode, mnem, 0xe, oplen, olist, flags)
         #print hex(va), oplen, len(op), op.size
         return op
+
+#class ThumbBEDisasm(ThumbDisasm):
+#    def __init__(self, doModeSwitch=True):
+#        self._doModeSwitch = doModeSwitch
+#        self.setEndian(ENDIAN_MSB)
 
 class Thumb16Disasm ( ThumbDisasm ):
     _tree = ttree

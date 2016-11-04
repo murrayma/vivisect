@@ -551,8 +551,9 @@ class VivWorkspaceCore(object,viv_impapi.ImportApi):
             self.setMeta('DefaultCall', defcall)
 
     def _mcb_bigend(self, name, value):
-        print('OH HAI')
         self.bigend = bool(value)
+        if self.arch != None:
+            self.arch.setEndian(self.bigend)
 
     def _mcb_Platform(self, name, value):
         # Default calling convention for platform

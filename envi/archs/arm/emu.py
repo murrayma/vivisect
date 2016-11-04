@@ -137,6 +137,10 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         self.addCallingConvention("armcall", aapcs)
         self._forrealz = False  # this tells the indexed operands whether to update registers on access
 
+    def setEndian(self, endian):
+        self.endian = endian
+        self.fmt = ('<H', '>H')[endian]
+
     def undefFlags(self):
         """
         Used in PDE.
