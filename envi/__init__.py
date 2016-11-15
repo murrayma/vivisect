@@ -21,7 +21,7 @@ ARCH_H8          = 7 << 16
 #ARCH_THUMBBE     = 9 << 16
 ARCH_MASK        = 0xffff0000   # Masked into IF_FOO and BR_FOO values
 
-ARCHCOUNT = 8 #10
+ARCHCOUNT = 7 #9
 
 arch_names = {
     ARCH_DEFAULT:   'default',
@@ -1359,7 +1359,7 @@ def getArchModules(default=ARCH_DEFAULT):
 
     # These must be in ARCH_FOO order
     archs = [ None, ]
-    archs.extend( [arch_modules.get(archidx<<16) for archidx in range(1, ARCHCOUNT)] )
+    archs.extend( [arch_modules.get(archidx<<16) for archidx in range(1, ARCHCOUNT+1)] )
 
     # Set the default module ( or None )
     archs[ ARCH_DEFAULT ] = archs[ default >> 16 ]
