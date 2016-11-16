@@ -6,7 +6,6 @@ from envi.bits import binary
 from envi import InvalidInstruction
 
 from envi.archs.arm.disasm import *
-armd = ArmDisasm()
 
 #thumb_32 = [
         #binary('11101'),
@@ -1851,6 +1850,7 @@ class ThumbDisasm:
         va &= -2
         offset &= -2
         val, = struct.unpack_from(self.hfmt, bytez, offset)
+        #print "THUMB: %s\t%s\t%s\t%s" % (repr(self.hfmt), hex(val), repr(self))
         try:
             opcode, mnem, opermkr, flags = self._tree.getInt(val, 16)
             #print opcode, mnem, opermkr, flags

@@ -552,6 +552,9 @@ class VivWorkspaceCore(object,viv_impapi.ImportApi):
 
     def _mcb_bigend(self, name, value):
         self.bigend = bool(value)
+        for arch in self.imem_archs:
+            arch.setEndian(self.bigend)
+
         if self.arch != None:
             self.arch.setEndian(self.bigend)
 

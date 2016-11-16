@@ -601,6 +601,20 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         if not self._emu_opts.has_key(opt):
             raise Exception('Unknown Emu Opt: %s' % opt)
         return self._emu_opts.get(opt)
+    
+    def setEndian(self, endian):
+        '''
+        Sets Endianness for the Emulator.
+        '''
+        for arch in self.imem_archs:
+            arch.setEndian(endian)
+
+    def getEndian(self):
+        '''
+        Returns the current Endianness for the emulator
+        '''
+        return self.imem_archs[0].getEndian()
+
 
     def getArchModule(self):
         raise Exception('Emulators *must* implement getArchModule()!')

@@ -120,7 +120,7 @@ conditionals = [
         c1101,
         ]
 
-class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
+class ArmEmulator(ArmRegisterContext, envi.Emulator, ArmModule):
 
     def __init__(self):
         ArmModule.__init__(self)
@@ -136,10 +136,6 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
 
         self.addCallingConvention("armcall", aapcs)
         self._forrealz = False  # this tells the indexed operands whether to update registers on access
-
-    def setEndian(self, endian):
-        self.endian = endian
-        self.fmt = ('<H', '>H')[endian]
 
     def undefFlags(self):
         """

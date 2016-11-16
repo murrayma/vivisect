@@ -2690,8 +2690,8 @@ class ArmDisasm:
         """
         Parse a sequence of bytes out into an envi.Opcode instance.
         """
-        opbytes = bytez[offset:offset+4]
-        opval, = struct.unpack(self.fmt, opbytes)
+        opval, = struct.unpack_from(self.fmt, bytez, offset)
+        #print self.fmt, self.getEndian(), hex(opval), repr(self)
 
         cond = opval >> 28
         #Get opcode, base mnem, operator list and flags
