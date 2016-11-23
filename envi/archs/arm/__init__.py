@@ -50,8 +50,6 @@ class ArmModule(envi.ArchitectureModule):
         self._arch_dis.setEndian(endian)
         self._arch_thumb_dis.setEndian(endian)
 
-    def getEndian(self):
-        return self._endian
 
 class ThumbModule(envi.ArchitectureModule):
     '''
@@ -95,9 +93,5 @@ class ThumbModule(envi.ArchitectureModule):
         self._endian = endian
         self._arch_dis.setEndian(endian)
         self._arch_thumb_dis.setEndian(endian)
-
-    def getEndian(self):
-        return self._endian
-
 
 from envi.archs.arm.emu import *

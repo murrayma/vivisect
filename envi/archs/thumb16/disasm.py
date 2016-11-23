@@ -534,7 +534,7 @@ def thumb32_11(va, val, val2):
     if (op2 & 0x40) == 0x40:
         raise Exception('# Coprocessor, Advanced SIMD, Floating Point instrs')
 
-    return ( olist, mnem, opcode, flags )
+    return ( opcode, mnem, olist, flags )
 
 def ROR_C(imm, bitcount, shift):
     m = shift % bitcount
@@ -1592,7 +1592,7 @@ thumb_base = [
     ('11011110',    (INS_B,'b',       pc_imm8,       envi.IF_NOFALL)),
     ('11011111',    (INS_BCC,'bfukt',   pc_imm8,       0)),
     # Software Interru2t
-    ('11011111',    (INS_SWI,'swi',     imm8,       0)), # SWI <blahblah>
+    ('11011111',    (INS_SWI,'svc',     imm8,       0)), # SWI <blahblah>
     ('1011111100000000',    (89,'nopHint',    imm8,       0)), #unnecessary instruction
     ('1011111100010000',    (90,'yieldHint',  imm8,       0)), #unnecessary instruction
     ('1011111100100000',    (91,'wfrHint',    imm8,       0)), #unnecessary instruction
@@ -1864,7 +1864,7 @@ class ThumbDisasm:
         #print "FLAGS: ", hex(va),hex(flags)
         if flags & IF_THUMB32:
             val2, = struct.unpack_from(self.hfmt, bytez, offset+2)
-            olist, nmnem, nopcode, nflags = opermkr(va+4, val, val2)
+            nopcode, nmnem, olist, nflags = opermkr(va+4, val, val2)
 
             if nmnem != None:   # allow opermkr to set the mnem
                 mnem = nmnem

@@ -762,12 +762,23 @@ def p_undef(opval, va):
         
     return (opcode, mnem, olist, 0)
 
+def p_dp_movw(opval, va):
+    iflags = 0
+    imm =  ((opval >>4) &0xf000) + (opval & 0xfff)
+    Rd = (opval >> 12) & 0xf
+    opcode = INS_MOV
+    olist = (
+        ArmRegOper(Rd, va=va),
+        ArmImmOper(imm),
+    )
+    return(opcode, "movw", olist, iflags)
+
 def p_dp_movt(opval, va):
     #fix opcode
     iflags = 0
     imm =  ((opval >>4) &0xf000) + (opval & 0xfff)
     Rd = (opval >> 12) & 0xf
-    opcode = (IENC_MOV_IMM_STAT << 16)
+    opcode = INS_MOV
     olist = (
         ArmRegOper(Rd, va=va),
         ArmImmOper(imm),
@@ -1293,7 +1304,8 @@ def p_branch(opval, va):        # primary branch encoding.  others were added la
 
     #FIXME this assumes A1 branch encoding.
     
-    olist = ( ArmPcOffsetOper(off, va),)
+    olist = ( ArmPcOffsetOper(off, va), )
+
     if link:
         flags = envi.IF_CALL
     else:
@@ -1641,6 +1653,7 @@ ienc_parsers_tmp[IENC_COPROC_REG_XFER] =   p_coproc_reg_xfer
 ienc_parsers_tmp[IENC_SWINT] =    p_swint
 ienc_parsers_tmp[IENC_UNCOND] = p_uncond
 ienc_parsers_tmp[IENC_DP_MOVT] = p_dp_movt
+ienc_parsers_tmp[IENC_DP_MOVW] = p_dp_movw
 
 ienc_parsers = tuple(ienc_parsers_tmp)
 
@@ -1712,24 +1725,7 @@ inittable = [
     (IENC_UNCOND, None),
 ]
 
-# FIXME for emulation...
-#def s_lsl(val, shval):
-    #pass
-
-#def s_lsr(val, shval):
-    #pass
-
-# These are indexed by the 2 bit "shift" value in some DP encodings
-#shift_handlers = (
-    #s_lsl,
-    #s_lsr,
-    #s_asr,
-    #s_ror,
-#)
-
 endian_names = ("le","be")
-
-#FIXME IF_NOFALL (and other envi flags)
 
 class ArmOpcode(envi.Opcode):
     _def_arch = envi.ARCH_ARMV7
@@ -2983,8 +2979,10 @@ class ArmDisasm:
         opval, = struct.unpack(self.fmt, opbytes)
 
         cond = opval >> 28
+
         #Get opcode, base mnem, operator list and flags
         opcode, mnem, olist, flags = self.doDecode(va, opval, bytez, offset)
+
         # since our flags determine how the instruction is decoded later....  
         # performance-wise this should be set as the default value instead of 0, but this is cleaner
         #flags |= envi.ARCH_ARMV7
@@ -3004,8 +3002,8 @@ class ArmDisasm:
 
         else:
             flags |= envi.IF_COND
+
         # FIXME conditionals are currently plumbed as "prefixes".  Perhaps normalize to that...
-        #op = stemCell(va, opcode, mnem, cond, 4, olist, flags)
         op = ArmOpcode(va, opcode, mnem, cond, 4, olist, flags)
         return op
         
