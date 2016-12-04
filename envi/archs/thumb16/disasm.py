@@ -376,6 +376,7 @@ def branch_misc(va, val, val2): # bl and misc control
             imm |= 0xff000000
 
         oper0 = ArmPcOffsetOper(e_bits.signed(imm,4), va=va)
+
         return opcode, mnem, (oper0, ), flags
         
 
@@ -1408,6 +1409,53 @@ def adv_simd_32(va, val1, val2):
         a = (val2>>8) & 0xf
         b = (val2>>4) & 1
         c = (val1>>4) & 3
+
+        index = c | (u<<2) | (b<<3) | (a<<4)
+        mnem, opcode, flags, handler = adv_simd_3_regs[index]
+
+        d = (val1 >> 2) & 0x10
+        d |= ((val2 >> 12) & 0xf)
+
+        n = (val2 >> 3) & 0x10
+        n |= (val1 & 0xf)
+
+        m = (val2 >> 1) & 0x10
+        m |= (val2 & 0xf)
+
+        q = (val2 >> 2) & 0x10
+
+        rbase = ('D%d', 'Q%d')[q]
+
+        opers = (
+            ArmRegOper(rctx.getRegisterIndex(rbase%d)),
+            ArmRegOper(rctx.getRegisterIndex(rbase%n)),
+            ArmRegOper(rctx.getRegisterIndex(rbase%m)),
+            )
+
+        if handler != None:
+            nmnem, nopcode, nflags, nopers = handler(val, va, mnem, opcode, flags, opers)
+            if nmnem != None:
+                mnem = nmnem
+                opcode = nopcode
+            if nflags != None:
+                flags = nflags
+            if nopers != None:
+                opers = nopers
+
+        return opcode, mnem, opers, flags
+
+def old_adv_simd_32(va, val1, val2):
+    # aside from u and the first 8 bits, ARM and Thumb2 decode identically (A7-259)
+    u = (val1>>12) & 1
+    a = (val1>>3) & 0x1f
+    b = (val2>>8) & 0xf
+    c = (val2>>4) & 0xf
+
+    if not (a & 0x10):
+        # three registers of the same length
+        a = (val2>>8) & 0xf
+        b = (val2>>4) & 1
+        c = (val1>>4) & 3
         if a == 0:
             if b==0:
                 # vhadd/vhsub
@@ -1881,7 +1929,8 @@ class ThumbDisasm:
 
         # since our flags determine how the instruction is decoded later....  
         # performance-wise this should be set as the default value instead of 0, but this is cleaner
-        flags |= self._optype
+        if not (flags & envi.ARCH_MASK):
+            flags |= self._optype
 
         #print opcode, mnem, olist, flags
         if (olist != None and 

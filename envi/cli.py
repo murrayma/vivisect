@@ -84,13 +84,16 @@ def getRelScriptsFromPath(scriptpaths):
     '''
     scripts = []
     for basedir in scriptpaths:
-        baselen = len(basedir) + 1
+        baselen = len(basedir)
 
         for dirname,subdirs,subfiles in os.walk(basedir):
             for subfile in subfiles:
                 subpath = os.path.join(dirname,subfile)
                 if isValidScript(subpath):
-                    scripts.append(subpath[baselen:])
+                    script = subpath[baselen:]
+                    if script.startswith(os.sep):
+                        script = script[1:]
+                    scripts.append(script)
 
     return scripts
 

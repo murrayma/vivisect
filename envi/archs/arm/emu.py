@@ -11,6 +11,7 @@ import envi.bits as e_bits
 from envi.const import *
 from envi.archs.arm.regs import *
 from envi.archs.arm import ArmModule
+from envi.archs.arm.disasm import ArmRegOper
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,6 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         ArmRegisterContext.__init__(self)
 
         self.addCallingConvention("armcall", aapcs)
-        self._forrealz = False  # this tells the indexed operands whether to update registers on access
 
     def undefFlags(self):
         """
@@ -208,7 +208,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         # NOTE: If an opcode method returns
         #       other than None, that is the new eip
         try:
-            self._forrealz = True
+            self.setMeta('forrealz', True)
             x = None
             if op.prefixes >= 0xe or conditionals[op.prefixes](self.getRegister(REG_FLAGS)>>28):
                 meth = self.op_methods.get(op.mnem, None)
@@ -224,7 +224,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
             # should we set this to the odd address or even during thumb?  (debugger)
             self.setProgramCounter(x)
         finally:
-            self._forrealz = False
+            self.setMeta('forrealz', False)
 
     def doPush(self, val):
         esp = self.getRegister(REG_SP)
@@ -261,14 +261,14 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         '''
         get the SPSR for the given ARM processor mode
         '''
-        ridx = _getRegIdx(PSR_Offset, mode)
+        ridx = _getRegIdx(REG_OFFSET_CPSR, mode)
         return self._rctx_vals[ridx]
 
     def setSPSR(self, mode, psr, mask=0xffffffff):
         '''
         set the SPSR for the given ARM processor mode
         '''
-        ridx = _getRegIdx(PSR_Offset, mode)
+        ridx = _getRegIdx(REG_OFFSET_CPSR, mode)
         psr = self._rctx_vals[REG_CPSR] & (~mask) | (psr & mask)
         self._rctx_vals[ridx] = psr
 
@@ -501,14 +501,18 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
             srcreg = op.opers[0].reg
             addr = self.getOperValue(op,0)
             regvals = self.getOperValue(op, 1)
-            regmask = op.opers[1].val
+            #regmask = op.opers[1].val
             updatereg = op.opers[0].oflags & OF_W
             flags = op.iflags
         else:
             srcreg = REG_SP
             addr = self.getStackCounter()
-            regvals = self.getOperValue(op, 0)
-            regmask = op.opers[0].val
+            oper = op.opers[0]
+            if isinstance(oper, ArmRegOper):
+                regvals = [ self.getOperValue(op, 0) ]
+            else:
+                regvals = self.getOperValue(op, 0)
+
             updatereg = 1
             flags = IF_DAIB_B
 
@@ -594,8 +598,12 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         else:
             srcreg = REG_SP
             addr = self.getStackCounter()
-            #regmask = self.getOperValue(op,1)
-            regmask = op.opers[0].val
+            oper = op.opers[0]
+            if isinstance(oper, ArmRegOper):
+                regmask = (1<<oper.reg)
+
+            else:
+                regmask = op.opers[0].val
             updatereg = 1
             flags = IF_DAIB_I
 
@@ -1036,18 +1044,18 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
             return imm32
 
     def i_umull(self, op):
-        print("FIXME: 0x%x: %s" % (op.va, op))
+        print("FIXME: 0x%x: %s - in emu" % (op.va, op))
     def i_umlal(self, op):
-        print("FIXME: 0x%x: %s" % (op.va, op))
+        print("FIXME: 0x%x: %s - in emu" % (op.va, op))
     def i_smull(self, op):
-        print("FIXME: 0x%x: %s" % (op.va, op))
+        print("FIXME: 0x%x: %s - in emu" % (op.va, op))
     def i_umull(self, op):
-        print("FIXME: 0x%x: %s" % (op.va, op))
+        print("FIXME: 0x%x: %s - in emu" % (op.va, op))
     def i_umull(self, op):
-        print("FIXME: 0x%x: %s" % (op.va, op))
+        print("FIXME: 0x%x: %s - in emu" % (op.va, op))
 
     def i_pld2(self, op):
-        print("FIXME: 0x%x: %s" % (op.va, op))
+        print("FIXME: 0x%x: %s - in emu" % (op.va, op))
 
     def _getCoProc(self, cpnum):
         if cpnum > 15:
