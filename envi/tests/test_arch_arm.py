@@ -506,40 +506,40 @@ instrs = [
         (REV_ALL_ARM, 'ff4cc3e3', 0x4560, 'bic  r4, r3, #0xff00', 0, ()),
         (REV_ALL_ARM, '001000eb', 0x4560, 'bl  0x00008568', 0, ()),
         (REV_ALL_ARM, '001000fa', 0x4560, 'blx  0x00005568', 0, ()),
-        (REV_ALL_ARM, '273764ee', 0x4560, 'cdp  p7, 6, c3, c4, c7, 1', 0, ()),
-        (REV_ALL_ARM, '473b34ee', 0x4560, 'cdp  p11, 3, c3, c4, c7, 2', 0, ()),
+        (REV_ALL_ARM, '273764ee', 0x4560, 'cdp  p7, 6, cr3, cr4, cr7, 1', 0, ()),
+        (REV_ALL_ARM, '473b34ee', 0x4560, 'cdp  p11, 3, cr3, cr4, cr7, 2', 0, ()),
         (REV_ALL_ARM, 'ff0c74e3', 0x4560, 'cmn  r4, #0xff00', 0, ()),
         (REV_ALL_ARM, 'ff0c54e3', 0x4560, 'cmp  r4, #0xff00', 0, ()),
         (REV_ALL_ARM, 'ff4c23e2', 0x4560, 'eor r4, r3, #0xff00', 0, ()),
         (REV_ALL_ARM, 'ff4c33e2', 0x4560, 'eors r4, r3, #0xff00', 0, ()),
-        (REV_ALL_ARM, '073894ed', 0x4560, 'ldc p8, c3, [r4, #0x1c]', 0, ()),
-        (REV_ALL_ARM, '073814ed', 0x4560, 'ldc p8, c3, [r4, #-0x1c]', 0, ()),
-        (REV_ALL_ARM, '0738b4ed', 0x4560, 'ldc p8, c3, [r4, #0x1c]!', 0, ()),
-        (REV_ALL_ARM, '073834ed', 0x4560, 'ldc p8, c3, [r4, #-0x1c]!', 0, ()),
-        (REV_ALL_ARM, '0738b4ec', 0x4560, 'ldc p8, c3, [r4], #0x1c', 0, ()),
-        (REV_ALL_ARM, '073834ec', 0x4560, 'ldc p8, c3, [r4], #-0x1c', 0, ()),
-        (REV_ALL_ARM, '073894ec', 0x4560, 'ldc p8, c3, [r4], {7}', 0, ()),
-        (REV_ALL_ARM, '0738d4ed', 0x4560, 'ldcl p8, c3, [r4, #0x1c]', 0, ()),
-        (REV_ALL_ARM, '073854ed', 0x4560, 'ldcl p8, c3, [r4, #-0x1c]', 0, ()),
-        (REV_ALL_ARM, '0738f4ed', 0x4560, 'ldcl p8, c3, [r4, #0x1c]!', 0, ()),
-        (REV_ALL_ARM, '073874ed', 0x4560, 'ldcl p8, c3, [r4, #-0x1c]!', 0, ()),
-        (REV_ALL_ARM, '0738f4ec', 0x4560, 'ldcl p8, c3, [r4], #0x1c', 0, ()),
-        (REV_ALL_ARM, '073874ec', 0x4560, 'ldcl p8, c3, [r4], #-0x1c', 0, ()),
-        (REV_ALL_ARM, '0738d4ec', 0x4560, 'ldcl p8, c3, [r4], {7}', 0, ()),
-        (REV_ALL_ARM, '07389fed', 0x4560, 'ldc p8, c3, [#0x4584]', 0, ()),
-        (REV_ALL_ARM, '07381fed', 0x4560, 'ldc p8, c3, [#0x454c]', 0, ()),
-        (REV_ALL_ARM, '0738bfed', 0x4560, 'ldc p8, c3, [#0x4584]', 0, ()),
-        (REV_ALL_ARM, '07383fed', 0x4560, 'ldc p8, c3, [#0x454c]', 0, ()),
-        (REV_ALL_ARM, '0738bfec', 0x4560, 'ldc p8, c3, [#0x4584]', 0, ()),
-        (REV_ALL_ARM, '07383fec', 0x4560, 'ldc p8, c3, [#0x454c]', 0, ()),
-        (REV_ALL_ARM, '07389fec', 0x4560, 'ldc p8, c3, [pc], {7}', 0, ()),
-        (REV_ALL_ARM, '0738dfed', 0x4560, 'ldcl p8, c3, [#0x4584]', 0, ()),
-        (REV_ALL_ARM, '07385fed', 0x4560, 'ldcl p8, c3, [#0x454c]', 0, ()),
-        (REV_ALL_ARM, '0738ffed', 0x4560, 'ldcl p8, c3, [#0x4584]', 0, ()),
-        (REV_ALL_ARM, '07387fed', 0x4560, 'ldcl p8, c3, [#0x454c]', 0, ()),
-        (REV_ALL_ARM, '0738ffec', 0x4560, 'ldcl p8, c3, [#0x4584]', 0, ()),
-        (REV_ALL_ARM, '07387fec', 0x4560, 'ldcl p8, c3, [#0x454c]', 0, ()),
-        (REV_ALL_ARM, '0738dfec', 0x4560, 'ldcl p8, c3, [pc], {7}', 0, ()),
+        (REV_ALL_ARM, '073894ed', 0x4560, 'ldc p8, cr3, [r4, #0x1c]', 0, ()),
+        (REV_ALL_ARM, '073814ed', 0x4560, 'ldc p8, cr3, [r4, #-0x1c]', 0, ()),
+        (REV_ALL_ARM, '0738b4ed', 0x4560, 'ldc p8, cr3, [r4, #0x1c]!', 0, ()),
+        (REV_ALL_ARM, '073834ed', 0x4560, 'ldc p8, cr3, [r4, #-0x1c]!', 0, ()),
+        (REV_ALL_ARM, '0738b4ec', 0x4560, 'ldc p8, cr3, [r4], #0x1c', 0, ()),
+        (REV_ALL_ARM, '073834ec', 0x4560, 'ldc p8, cr3, [r4], #-0x1c', 0, ()),
+        (REV_ALL_ARM, '073894ec', 0x4560, 'ldc p8, cr3, [r4], {7}', 0, ()),
+        (REV_ALL_ARM, '0738d4ed', 0x4560, 'ldcl p8, cr3, [r4, #0x1c]', 0, ()),
+        (REV_ALL_ARM, '073854ed', 0x4560, 'ldcl p8, cr3, [r4, #-0x1c]', 0, ()),
+        (REV_ALL_ARM, '0738f4ed', 0x4560, 'ldcl p8, cr3, [r4, #0x1c]!', 0, ()),
+        (REV_ALL_ARM, '073874ed', 0x4560, 'ldcl p8, cr3, [r4, #-0x1c]!', 0, ()),
+        (REV_ALL_ARM, '0738f4ec', 0x4560, 'ldcl p8, cr3, [r4], #0x1c', 0, ()),
+        (REV_ALL_ARM, '073874ec', 0x4560, 'ldcl p8, cr3, [r4], #-0x1c', 0, ()),
+        (REV_ALL_ARM, '0738d4ec', 0x4560, 'ldcl p8, cr3, [r4], {7}', 0, ()),
+        (REV_ALL_ARM, '07389fed', 0x4560, 'ldc p8, cr3, [#0x4584]', 0, ()),
+        (REV_ALL_ARM, '07381fed', 0x4560, 'ldc p8, cr3, [#0x454c]', 0, ()),
+        (REV_ALL_ARM, '0738bfed', 0x4560, 'ldc p8, cr3, [#0x4584]', 0, ()),
+        (REV_ALL_ARM, '07383fed', 0x4560, 'ldc p8, cr3, [#0x454c]', 0, ()),
+        (REV_ALL_ARM, '0738bfed', 0x4560, 'ldc p8, cr3, [#0x4584]', 0, ()),
+        (REV_ALL_ARM, '07383fed', 0x4560, 'ldc p8, cr3, [#0x454c]', 0, ()),
+        (REV_ALL_ARM, '07389fec', 0x4560, 'ldc p8, cr3, [pc], {7}', 0, ()),
+        (REV_ALL_ARM, '0738dfed', 0x4560, 'ldcl p8, cr3, [#0x4584]', 0, ()),
+        (REV_ALL_ARM, '07385fed', 0x4560, 'ldcl p8, cr3, [#0x454c]', 0, ()),
+        (REV_ALL_ARM, '0738ffed', 0x4560, 'ldcl p8, cr3, [#0x4584]', 0, ()),
+        (REV_ALL_ARM, '07387fed', 0x4560, 'ldcl p8, cr3, [#0x454c]', 0, ()),
+        (REV_ALL_ARM, '0738ffed', 0x4560, 'ldcl p8, cr3, [#0x4584]', 0, ()),
+        (REV_ALL_ARM, '07387fed', 0x4560, 'ldcl p8, cr3, [#0x454c]', 0, ()),
+        (REV_ALL_ARM, '0738dfec', 0x4560, 'ldcl p8, cr3, [pc], {7}', 0, ()),
         (REV_ALL_ARM, '980090e8', 0x4560, 'ldm  r0, {r3, r4, r7}', 0, ()),
         (REV_ALL_ARM, '9800b0e8', 0x4560, 'ldm  r0!, {r3, r4, r7}', 0, ()),
         (REV_ALL_ARM, '98009de9', 0x4560, 'ldmib  sp, {r3, r4, r7}', 0, ()),
@@ -585,10 +585,10 @@ instrs = [
         (REV_ALL_ARM, 'ff3cb0e3', 0x4560, 'movs r3, #0xff00', 0, ()),
         (REV_ALL_ARM, '0430a0e1', 0x4560, 'mov r3, r4', 0, ()),
         (REV_ALL_ARM, '0430b0e1', 0x4560, 'movs r3, r4', 0, ()),
-        (REV_ALL_ARM, 'd73884ee', 0x4560, 'mcr p8, 4, r3, c4, c7, 6', 0, ()),
-        (REV_ALL_ARM, '473844ec', 0x4560, 'mcrr p8, 4, r3, r4, c7', 0, ()),
-        (REV_ALL_ARM, 'd73894ee', 0x4560, 'mrc p8, 4, r3, c4, c7, 6', 0, ()),
-        (REV_ALL_ARM, '473854ec', 0x4560, 'mrrc p8, 4, r3, r4, c7', 0, ()),
+        (REV_ALL_ARM, 'd73884ee', 0x4560, 'mcr p8, 4, r3, cr4, cr7, 6', 0, ()),
+        (REV_ALL_ARM, '473844ec', 0x4560, 'mcrr p8, 4, r3, r4, cr7', 0, ()),
+        (REV_ALL_ARM, 'd73894ee', 0x4560, 'mrc p8, 4, r3, cr4, cr7, 6', 0, ()),
+        (REV_ALL_ARM, '473854ec', 0x4560, 'mrrc p8, 4, r3, r4, cr7', 0, ()),
         (REV_ALL_ARM, 'd3f021e3', 0x4560, 'msr cpsr_c, #0xd3', 0, ()),
         (REV_ALL_ARM, 'd3f022e3', 0x4560, 'msr cpsr_x, #0xd3', 0, ()),
         (REV_ALL_ARM, 'd3f024e3', 0x4560, 'msr cpsr_s, #0xd3', 0, ()),
@@ -613,13 +613,13 @@ instrs = [
         (REV_ALL_ARM, 'ff3cd4e2', 0x4560, 'sbcs r3, r4, #0xff00', 0, ()),
         (REV_ALL_ARM, '9637c4e0', 0x4560, 'smull r3, r4, r6, r7', 0, ()),
         (REV_ALL_ARM, '9637d4e0', 0x4560, 'smulls r3, r4, r6, r7', 0, ()),
-        (REV_ALL_ARM, '3f3884ed', 0x4560, 'stc p8, c3, [r4, #0xfc]', 0, ()),
-        (REV_ALL_ARM, '3f3804ed', 0x4560, 'stc p8, c3, [r4, #-0xfc]', 0, ()),
-        (REV_ALL_ARM, '3f38a4ed', 0x4560, 'stc p8, c3, [r4, #0xfc]!', 0, ()),
-        (REV_ALL_ARM, '3f3824ed', 0x4560, 'stc p8, c3, [r4, #-0xfc]!', 0, ()),
-        (REV_ALL_ARM, '3f38a4ec', 0x4560, 'stc p8, c3, [r4], #0xfc', 0, ()),
-        (REV_ALL_ARM, '3f3824ec', 0x4560, 'stc p8, c3, [r4], #-0xfc', 0, ()),
-        (REV_ALL_ARM, '0f3884ec', 0x4560, 'stc p8, c3, [r4], {15}', 0, ()),
+        (REV_ALL_ARM, '3f3884ed', 0x4560, 'stc p8, cr3, [r4, #0xfc]', 0, ()),
+        (REV_ALL_ARM, '3f3804ed', 0x4560, 'stc p8, cr3, [r4, #-0xfc]', 0, ()),
+        (REV_ALL_ARM, '3f38a4ed', 0x4560, 'stc p8, cr3, [r4, #0xfc]!', 0, ()),
+        (REV_ALL_ARM, '3f3824ed', 0x4560, 'stc p8, cr3, [r4, #-0xfc]!', 0, ()),
+        (REV_ALL_ARM, '3f38a4ec', 0x4560, 'stc p8, cr3, [r4], #0xfc', 0, ()),
+        (REV_ALL_ARM, '3f3824ec', 0x4560, 'stc p8, cr3, [r4], #-0xfc', 0, ()),
+        (REV_ALL_ARM, '0f3884ec', 0x4560, 'stc p8, cr3, [r4], {15}', 0, ()),
         (REV_ALL_ARM, '940081e8', 0x4560, 'stm r1, {r2, r4, r7}', 0, ()),
         (REV_ALL_ARM, '9400a1e8', 0x4560, 'stm r1!, {r2, r4, r7}', 0, ()),
         (REV_ALL_ARM, '940001e8', 0x4560, 'stmda r1, {r2, r4, r7}', 0, ()),
@@ -701,27 +701,27 @@ instrs = [
         (REV_ALL_ARM, '70f02fe1', 0x4560, 'bkpt  #0xff00', 0, ()),
         (REV_ALL_ARM, '24ff2fe1', 0x4560, 'bxj  r4', 0, ()), # note this switches to jazelle
         (REV_ALL_ARM, '143f6fe1', 0x4560, 'clz r3, r4', 0, ()),
-        (REV_ALL_ARM, '273764fe', 0x4560, 'cdp2  p7, 6, c3, c4, c7, 1', 0, ()),
-        (REV_ALL_ARM, '473b34fe', 0x4560, 'cdp2  p11, 3, c3, c4, c7, 2', 0, ()),
-        (REV_ALL_ARM, '073894fd', 0x4560, 'ldc2 p8, c3, [r4, #0x1c]', 0, ()),
-        (REV_ALL_ARM, '073814fd', 0x4560, 'ldc2 p8, c3, [r4, #-0x1c]', 0, ()),
-        (REV_ALL_ARM, '0738b4fd', 0x4560, 'ldc2 p8, c3, [r4, #0x1c]!', 0, ()),
-        (REV_ALL_ARM, '073834fd', 0x4560, 'ldc2 p8, c3, [r4, #-0x1c]!', 0, ()),
-        (REV_ALL_ARM, '0738b4fc', 0x4560, 'ldc2 p8, c3, [r4], #0x1c', 0, ()),
-        (REV_ALL_ARM, '073834fc', 0x4560, 'ldc2 p8, c3, [r4], #-0x1c', 0, ()),
-        (REV_ALL_ARM, '073894fc', 0x4560, 'ldc2 p8, c3, [r4], #0x1c', 0, ()),  #option should not have # listed
-        (REV_ALL_ARM, '0738d4fd', 0x4560, 'ldc2l p8, c3, [r4, #0x1c]', 0, ()),
-        (REV_ALL_ARM, '073854fd', 0x4560, 'ldc2l p8, c3, [r4, #-0x1c]', 0, ()),
-        (REV_ALL_ARM, '0738f4fd', 0x4560, 'ldc2l p8, c3, [r4, #0x1c]!', 0, ()),
-        (REV_ALL_ARM, '073874fd', 0x4560, 'ldc2l p8, c3, [r4, #-0x1c]!', 0, ()),
-        (REV_ALL_ARM, '0738f4fc', 0x4560, 'ldc2l p8, c3, [r4], #0x1c', 0, ()),
-        (REV_ALL_ARM, '073874fc', 0x4560, 'ldc2l p8, c3, [r4], #-0x1c', 0, ()),
-        (REV_ALL_ARM, '0738d4fc', 0x4560, 'ldc2l p8, c3, [r4], #0x1c', 0, ()),  #option should not have # listed
-        (REV_ALL_ARM, 'd73884fe', 0x4560, 'mcr2 p8, 4, r3, c4, c7, 6', 0, ()),
-        (REV_ALL_ARM, '473844fc', 0x4560, 'mcrr2 p8, 4, r3, r4, c7', 0, ()),
+        (REV_ALL_ARM, '273764fe', 0x4560, 'cdp2  p7, 6, cr3, cr4, cr7, 1', 0, ()),
+        (REV_ALL_ARM, '473b34fe', 0x4560, 'cdp2  p11, 3, cr3, cr4, cr7, 2', 0, ()),
+        (REV_ALL_ARM, '073894fd', 0x4560, 'ldc2 p8, cr3, [r4, #0x1c]', 0, ()),
+        (REV_ALL_ARM, '073814fd', 0x4560, 'ldc2 p8, cr3, [r4, #-0x1c]', 0, ()),
+        (REV_ALL_ARM, '0738b4fd', 0x4560, 'ldc2 p8, cr3, [r4, #0x1c]!', 0, ()),
+        (REV_ALL_ARM, '073834fd', 0x4560, 'ldc2 p8, cr3, [r4, #-0x1c]!', 0, ()),
+        (REV_ALL_ARM, '0738b4fc', 0x4560, 'ldc2 p8, cr3, [r4], #0x1c', 0, ()),
+        (REV_ALL_ARM, '073834fc', 0x4560, 'ldc2 p8, cr3, [r4], #-0x1c', 0, ()),
+        (REV_ALL_ARM, '073894fc', 0x4560, 'ldc2 p8, cr3, [r4], #0x1c', 0, ()),  #option should not have # listed
+        (REV_ALL_ARM, '0738d4fd', 0x4560, 'ldc2l p8, cr3, [r4, #0x1c]', 0, ()),
+        (REV_ALL_ARM, '073854fd', 0x4560, 'ldc2l p8, cr3, [r4, #-0x1c]', 0, ()),
+        (REV_ALL_ARM, '0738f4fd', 0x4560, 'ldc2l p8, cr3, [r4, #0x1c]!', 0, ()),
+        (REV_ALL_ARM, '073874fd', 0x4560, 'ldc2l p8, cr3, [r4, #-0x1c]!', 0, ()),
+        (REV_ALL_ARM, '0738f4fc', 0x4560, 'ldc2l p8, cr3, [r4], #0x1c', 0, ()),
+        (REV_ALL_ARM, '073874fc', 0x4560, 'ldc2l p8, cr3, [r4], #-0x1c', 0, ()),
+        (REV_ALL_ARM, '0738d4fc', 0x4560, 'ldc2l p8, cr3, [r4], #0x1c', 0, ()),  #option should not have # listed
+        (REV_ALL_ARM, 'd73884fe', 0x4560, 'mcr2 p8, 4, r3, cr4, cr7, 6', 0, ()),
+        (REV_ALL_ARM, '473844fc', 0x4560, 'mcrr2 p8, 4, r3, r4, cr7', 0, ()),
         (REV_ALL_ARM, 'ff3f0fe3', 0x4560, 'movw r3, #0xffff', 0, ()),
-        (REV_ALL_ARM, 'd73894fe', 0x4560, 'mrc2 p8, 4, r3, c4, c7, 6', 0, ()),
-        (REV_ALL_ARM, '473854fc', 0x4560, 'mrrc2 p8, 4, r3, r4, c7', 0, ()),
+        (REV_ALL_ARM, 'd73894fe', 0x4560, 'mrc2 p8, 4, r3, cr4, cr7, 6', 0, ()),
+        (REV_ALL_ARM, '473854fc', 0x4560, 'mrrc2 p8, 4, r3, r4, cr7', 0, ()),
         (REV_ALL_ARM, '00300fe1', 0x4560, 'mrs r3, cpsr', 0, ()),
         (REV_ALL_ARM, '00f020e3', 0x4560, 'nop', 0, ()),
         (REV_ALL_ARM, '173384e6', 0x4560, 'pkhbt r3, r4, r7, lsl #6', 0, ()),
@@ -988,17 +988,17 @@ instrs = [
         (REV_ALL_ARM, '14f733e7', 0x4560, 'udiv r3, r4, r7', 0, ()),
         #(REV_ALL_ARM, 'f000f0e7', 0x4560, 'udf #0', 0, ()), #This forces an undefined instruction. Commented out normally.
         #all v codes are suspect at this time - not implimented but may not be correct here either
-        #(REV_ALL_ARM, '173704f2', 0x4560, 'vaba.s8 d3, d4, d7', 0, ()),
-        #(REV_ALL_ARM, '173714f2', 0x4560, 'vaba.s16 d3, d4, d7', 0, ()),
-        #(REV_ALL_ARM, '173724f2', 0x4560, 'vaba.s32 d3, d4, d7', 0, ()),
-        #(REV_ALL_ARM, '173704f3', 0x4560, 'vaba.u8 d3, d4, d7', 0, ()),
-        #(REV_ALL_ARM, '173714f3', 0x4560, 'vaba.u16 d3, d4, d7', 0, ()),
-        #(REV_ALL_ARM, '173724f3', 0x4560, 'vaba.u32 d3, d4, d7', 0, ()),
-        #(REV_ALL_ARM, '5e6708f2', 0x4560, 'vaba.s8 q3, q4, q7', 0, ()),
-        #(REV_ALL_ARM, '5e6718f2', 0x4560, 'vaba.s16 q3, q4, q7', 0, ()),
-        #(REV_ALL_ARM, '5e6728f2', 0x4560, 'vaba.s32 q3, q4, q7', 0, ()),
-        #(REV_ALL_ARM, '5e6708f3', 0x4560, 'vaba.u8 q3, q4, q7', 0, ()),
-        #(REV_ALL_ARM, '5e6718f3', 0x4560, 'vaba.u16 q3, q4, q7', 0, ()),
+        (REV_ALL_ARM, '173704f2', 0x4560, 'vaba.s8 d3, d4, d7', 0, ()),
+        (REV_ALL_ARM, '173714f2', 0x4560, 'vaba.s16 d3, d4, d7', 0, ()),
+        (REV_ALL_ARM, '173724f2', 0x4560, 'vaba.s32 d3, d4, d7', 0, ()),
+        (REV_ALL_ARM, '173704f3', 0x4560, 'vaba.u8 d3, d4, d7', 0, ()),
+        (REV_ALL_ARM, '173714f3', 0x4560, 'vaba.u16 d3, d4, d7', 0, ()),
+        (REV_ALL_ARM, '173724f3', 0x4560, 'vaba.u32 d3, d4, d7', 0, ()),
+        (REV_ALL_ARM, '5e6708f2', 0x4560, 'vaba.s8 q3, q4, q7', 0, ()),
+        (REV_ALL_ARM, '5e6718f2', 0x4560, 'vaba.s16 q3, q4, q7', 0, ()),
+        (REV_ALL_ARM, '5e6728f2', 0x4560, 'vaba.s32 q3, q4, q7', 0, ()),
+        (REV_ALL_ARM, '5e6708f3', 0x4560, 'vaba.u8 q3, q4, q7', 0, ()),
+        (REV_ALL_ARM, '5e6718f3', 0x4560, 'vaba.u16 q3, q4, q7', 0, ()),
         #(REV_ALL_ARM, '5e6728f3', 0x4560, 'vaba.u32 q3, q4, q7', 0, ()),
         #(REV_ALL_ARM, '076584f2', 0x4560, 'vabal.s8 q3, d4, d7', 0, ()),
         #(REV_ALL_ARM, '076594f2', 0x4560, 'vabal.s16 q3, d4, d7', 0, ()),
@@ -1060,7 +1060,7 @@ instrs = [
         #(REV_ALL_ARM, '0760a4f2', 0x4560, 'vaddl.s32 q3, d4, d7', 0, ()),
         #(REV_ALL_ARM, '076084f3', 0x4560, 'vaddl.u8 q3, d4, d7', 0, ()),
         #(REV_ALL_ARM, '076094f3', 0x4560, 'vaddl.u16 q3, d4, d7', 0, ()),
-        #(REV_ALL_ARM, '0760a4f3', 0x4560, 'vaddl.u32 q3, d4, d7', 0, ()),0
+        #(REV_ALL_ARM, '0760a4f3', 0x4560, 'vaddl.u32 q3, d4, d7', 0, ()),
         #(REV_ALL_ARM, '076188f2', 0x4560, 'vaddw.s8 q3, q4, d7', 0, ()),
         #(REV_ALL_ARM, '076198f2', 0x4560, 'vaddw.s16 q3, q4, d7', 0, ()),
         #(REV_ALL_ARM, '0761a8f2', 0x4560, 'vaddw.s32 q3, q4, d7', 0, ()),
@@ -1215,7 +1215,12 @@ instrs = [
         #(REV_ALL_ARM, '611afbee', 0x4560, 'vcvt.f32.u16 s3, s4, #13',0, ()),
         #(REV_ALL_ARM, 'e81afaee', 0x4560, 'vcvt.f32.s32 s3, s4, #15',0, ()),
         #(REV_ALL_ARM, 'e41afbee', 0x4560, 'vcvt.f32.u32 s3, s4, #23',0, ()),
-
+        # Following commands are VECTOR Instructions
+        (REV_ALL_ARM, '3540f3f3', 0x4560, 'vshr.u32 d20, d21, #0x0d', 0, ()),
+        (REV_ALL_ARM, 'f3ff3540', 0x4561, 'vshr.u32 d20, d21, #0x0d', 0, ()),
+        (REV_ALL_ARM, '3544f3f3', 0x4560, 'vsri.32 d20, d21, #0x0d', 0, ()),
+        (REV_ALL_ARM, 'f3ff3544', 0x4561, 'vsri.32 d20, d21, #0x0d', 0, ()),
+        (REV_ALL_ARM, 'f3ff3546', 0x4561, 'vqshlu.s32 d20, d21, #0x13', 0, ()), # from ODAWEB
         # Following commands are THUMB commands
         ]
 
@@ -1282,6 +1287,7 @@ class ArmInstructionSet(unittest.TestCase):
 
         # ldr r3, [#0xbfb00010]
         emu = vw.getEmulator()
+        emu.setMeta('forrealz', True)
         emu._forrealz = True    # cause base_reg updates on certain Operands.
 
         emu.writeMemory(0xbfb00010, "abcdef98".decode('hex'))
@@ -1315,7 +1321,7 @@ class ArmInstructionSet(unittest.TestCase):
         emu.writeMemory(0xbfb00010, "ABCDEF10".decode('hex'))
         emu.setRegister(11, 0xbfb00010)
         
-        opstr = struct.pack('<I', 0xe49b3008)
+        opstr = struct.pack('<I', 0xe4bb3008)
         op = vw.arch.archParseOpcode(opstr, va=0xbfb00000)
         
         value = op.getOperValue(1, emu)
@@ -1331,7 +1337,7 @@ class ArmInstructionSet(unittest.TestCase):
         emu.writeMemory(0xbfb00010, "ABCDEF10".decode('hex'))
         emu.setRegister(11, 0xbfb00010)
         
-        opstr = struct.pack('<I', 0xe41b3008)
+        opstr = struct.pack('<I', 0xe43b3008)
         op = vw.arch.archParseOpcode(opstr, va=0xbfb00000)
         
         value = op.getOperValue(1, emu)
@@ -1347,6 +1353,7 @@ class ArmInstructionSet(unittest.TestCase):
         
         # ldr r2, [r10, r2 ]
         emu = vw.getEmulator()
+        emu.setMeta('forrealz', True)
         emu._forrealz = True
         
         opstr = struct.pack('<I', 0xe79a2002)
@@ -1364,12 +1371,12 @@ class ArmInstructionSet(unittest.TestCase):
 
 
 
-        # ldr r2, [r10], r2 
+        # ldrt r2, [r10], r2 
         emu.setRegister(10, 0xbfb00008)
         emu.setRegister(2,  8)
         emu.writeMemory(0xbfb00008, "ABCDEF10".decode('hex'))
         
-        opstr = struct.pack('<I', 0xe69a2002)
+        opstr = struct.pack('<I', 0xe6ba2002)
         op = vw.arch.archParseOpcode(opstr, va=0xbfb00000)
         
         value = op.getOperValue(1, emu)
@@ -1424,6 +1431,7 @@ class ArmInstructionSet(unittest.TestCase):
         # Scaled with shifts/roll
         # ldr r3, [r10, r2 lsr #2]
         emu = vw.getEmulator()
+        emu.setMeta('forrealz', True)
         emu._forrealz = True
         
         opstr = struct.pack('<I', 0xe79a3122)
@@ -1475,9 +1483,10 @@ class ArmInstructionSet(unittest.TestCase):
         # ldrh r3, [r10], -r2 
         #b2451ae0 
         emu = vw.getEmulator()
+        emu.setMeta('forrealz', True)
         emu._forrealz = True
 
-        opstr = struct.pack('<I', 0xe01a30b2)
+        opstr = struct.pack('<I', 0xe03a30b2)
         op = vw.arch.archParseOpcode(opstr, va=0xbfb00000)
 
         emu.setRegister(10, 0xbfb00008)
@@ -1500,7 +1509,7 @@ class ArmInstructionSet(unittest.TestCase):
         emu.setRegister(2,  8)
         emu.writeMemory(0xbfb00008, "ABCDEF10".decode('hex'))
 
-        opstr = struct.pack('<I', 0xe09a35b2)
+        opstr = struct.pack('<I', 0xe0ba35b2)
         op = vw.arch.archParseOpcode(opstr, va=0xbfb00000)
         
         value = op.getOperValue(1, emu)
@@ -1564,6 +1573,7 @@ class ArmInstructionSet(unittest.TestCase):
         vw.addMemoryMap(0, 7, 'firmware', '\xff' * 16384*1024)
         vw.addMemoryMap(0x400000, 7, 'firmware', '\xff' * 16384*1024)
         emu = vw.getEmulator()
+        emu.setMeta('forrealz', True)
         emu._forrealz = True
         emu.logread = emu.logwrite = True
         badcount = 0  # Note: doesn't really do anything since we error out right away
