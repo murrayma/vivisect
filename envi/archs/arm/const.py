@@ -65,7 +65,7 @@ ARCH_REVS['thumbee'] = REV_THUMBEE
 ARCH_REVSLEN = len(ARCH_REVS)
 
 #IFLAGS - keep bottom 8-bits for cross-platform flags like envi.IF_NOFALL and envi.IF_BRFALL
-IF_PSR_S     = 1<<32     # This DP instruciton can update CPSR
+IF_PSR_S     = 1<<32     # This DP instruciton can update CPSR  (as in, add vs. adds)
 IF_B         = 1<<33     # Byte
 IF_H         = 1<<35    # HalfWord
 IF_S         = 1<<36    # Signed    #(not to be confused with IF_PSR_S which is the "update status" flag.
@@ -85,6 +85,7 @@ IF_IB        = 7<<(IF_DAIB_SHFT-1)  # Increment Before
 IF_DAIB_B    = 5<<(IF_DAIB_SHFT-1)  # Before mask
 IF_DAIB_I    = 3<<(IF_DAIB_SHFT-1)  # Before mask
 IF_THUMB32   = 1<<50    # thumb32
+
 IFS_VQ        = 1<<1    # Adv SIMD: operation uses saturating arithmetic
 IFS_VR        = 1<<2    # Adv SIMD: operation performs rounding
 IFS_VD        = 1<<3    # Adv SIMD: operation doubles the result
@@ -473,6 +474,21 @@ instrnames = [
         'INS_VQRSHRUN',
         'INS_VSHLL',
         'INS_VCVT',
+        'INS_LDRB',
+        'INS_STRB',
+        'INS_SMUL',
+        'INS_UADD16',
+        'INS_UADD8',
+        'INS_USUB16',
+        'INS_USUB8',
+        'INS_UASX',
+        'INS_USAX',
+        'INS_NOP',
+        'INS_YIELD',
+        'INS_WFE',
+        'INS_WFI',
+        'INS_SEV',
+        'INS_CPS',
         ]
 
 ins_index = 85
