@@ -1526,7 +1526,7 @@ def coproc_simd_32(va, val1, val2):
                     oflags |= OF_W   # writeback flag for ArmRegOper
 
                 if indiv:
-                    rbase = ('S%d', 'D%d')[size]
+                    rbase = ('s%d', 'd%d')[size]
                     VRd = rctx.getRegisterIndex(rbase % d)
                     opers = (
                             ArmRegOper(VRd, va=va, oflags=oflags),
@@ -1573,6 +1573,9 @@ def fp_dp(va, val1, val2):
 
     sz = (val2 >> 8) & 1
 
+    # D and S, depending on sz
+    rbase = ("s%d","d%d")[sz]
+
     if opc1sub != 0b1011:
         op = (opc1sub & 0b1000) | ((opc1sub & 0b11)<<1) | (opc3 & 1)
         mnem = ('vmla','vmls','vnmla','vnmls','vnmul','vmul','vadd','vsub','vdiv','vfnms','vfnma','vfms','vfma',)[op]
@@ -1588,8 +1591,6 @@ def fp_dp(va, val1, val2):
             m = (Vm<<1) | M
             n = (opc2<<1) | N
 
-        # D and S, depending on sz
-        rbase = ("S%d","D%d")[sz]
         simdflags |= (IFS_F32, IFS_F64)[sz]
 
         # VMLA, VMLS p930
@@ -1618,13 +1619,13 @@ def fp_dp(va, val1, val2):
             m = (M<<4) | Vm
             imm = imm4h<<4 | imm4l
             simdflags |= IFS_F64
-            rbase = "D%d"
+            rbase = "d%d"
         else:
             d = (Vd<<1) | D
             m = (Vm<<1) | M
             imm = imm4h<<4 | imm4l
             simdflags |= IFS_F32
-            rbase = "S%d"
+            rbase = "s%d"
 
         if opc3 & 1 == 0:
             mnem = 'vmov'
@@ -1695,14 +1696,14 @@ def fp_dp(va, val1, val2):
                 d = (Vd<<1) | D
                 m = (M<<4) | Vm
                 simdflags |= IFS_F32F64
-                rbase1 = "S%d"
-                rbase2 = "D%d"
+                rbase1 = "s%d"
+                rbase2 = "d%d"
             else:
                 d = (D<<4) | Vd
                 m = (Vm<<1) | M
                 simdflags |= IFS_F64F32
-                rbase1 = "D%d"
-                rbase2 = "S%d"
+                rbase1 = "d%d"
+                rbase2 = "s%d"
 
             opers = (
                     ArmRegOper(rctx.getRegisterIndex(rbase1%d)),
@@ -1723,13 +1724,13 @@ def fp_dp(va, val1, val2):
                 if sz:
                     m = (M<<4) | Vm
                     simdflags |= (IFS_U32F64, IFS_S32F64)[signed]
-                    rbase1 = "S%d"
-                    rbase2 = "D%d"
+                    rbase1 = "s%d"
+                    rbase2 = "d%d"
                 else:
                     m = (Vm<<1) | M
                     simdflags |= (IFS_U32F32, IFS_S32F32)[signed]
-                    rbase1 = "S%d"
-                    rbase2 = "S%d"
+                    rbase1 = "s%d"
+                    rbase2 = "s%d"
 
             else:
                 mnem = 'vcvt'
@@ -1739,13 +1740,13 @@ def fp_dp(va, val1, val2):
                 if sz:
                     d = (D<<4) | Vd
                     simdflags |= (IFS_F64U32, IFS_F64S32)[signed]
-                    rbase1 = "D%d"
-                    rbase2 = "S%d"
+                    rbase1 = "d%d"
+                    rbase2 = "s%d"
                 else:
                     d = (Vd<<1) | D
                     simdflags |= (IFS_F32U32, IFS_F32S32)[signed]
-                    rbase1 = "S%d"
-                    rbase2 = "S%d"
+                    rbase1 = "s%d"
+                    rbase2 = "s%d"
 
             opers = (
                     ArmRegOper(rctx.getRegisterIndex(rbase1%d)),
@@ -1786,9 +1787,9 @@ def fp_dp(va, val1, val2):
             m = (M<<4) | Vm
 
             if Q:
-                rbase = "Q%d"
+                rbase = "q%d"
             else:
-                rbase = "D%d"
+                rbase = "d%d"
 
             #regs = Q + 1
 
@@ -1838,7 +1839,7 @@ def _adv_simd_32(va, val1, val2):
 
         q = (val2 >> 2) & 0x10
 
-        rbase = ('D%d', 'Q%d')[q]
+        rbase = ('d%d', 'q%d')[q]
 
         opers = (
             ArmRegOper(rctx.getRegisterIndex(rbase%d)),
