@@ -55,6 +55,15 @@ class ArmModule(envi.ArchitectureModule):
         self._arch_dis.setEndian(endian)
         self._arch_thumb_dis.setEndian(endian)
 
+    def archModifyFuncAddr(self, va, arch):
+        if va & 1:
+            return va & -2, envi.ARCH_THUMB
+        return None, None
+
+    def archModifyXrefAddr(self, va):
+        if va & 1:
+            return va & -2
+        return None
 
 class ThumbModule(envi.ArchitectureModule):
     '''
@@ -99,5 +108,15 @@ class ThumbModule(envi.ArchitectureModule):
     def setEndian(self, endian):
         self._endian = endian
         self._arch_dis.setEndian(endian)
+
+    def archModifyFuncAddr(self, va, arch):
+        if va & 1:
+            return va & -2, envi.ARCH_THUMB
+        return None, None
+
+    def archModifyXrefAddr(self, va):
+        if va & 1:
+            return va & -2
+        return None
 
 from envi.archs.arm.emu import *
