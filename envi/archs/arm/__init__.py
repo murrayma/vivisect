@@ -28,6 +28,11 @@ class ArmModule(envi.ArchitectureModule):
 
     def archGetNopInstr(self):
         return '\x00'
+
+    def archGetBadOps(self):
+        oplist = [ self.archParseOpcode(badop,0,0) for badop in self._arch_badopbytes ]
+        oplist.extend([ self.archParseOpcode(badop,0,1) for badop in self._arch_badopbytes ])
+        return oplist
  
     def getPointerSize(self):
         return 4
@@ -89,6 +94,11 @@ class ThumbModule(envi.ArchitectureModule):
     def archGetNopInstr(self):
         return '\x00'
  
+    def archGetBadOps(self):
+        oplist = [ self.archParseOpcode(badop,0,0) for badop in self._arch_badopbytes ]
+        oplist.extend([ self.archParseOpcode(badop,0,1) for badop in self._arch_badopbytes ])
+        return oplist
+
     def getPointerSize(self):
         return 4
 

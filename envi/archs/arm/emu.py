@@ -211,7 +211,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
                 pc = self.getProgramCounter()
                 x = pc+op.size
 
-            # should we set this to the odd address or even during thumb?  (debugger)
+            # should we set this to the odd address or even during thumb?  (debugger).  ANS: Even.  All addresses are Even.  Track Mode elsewhere.
             self.setProgramCounter(x)
         finally:
             self.setMeta('forrealz', False)
@@ -699,6 +699,10 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         val = self.getOperValue(op, 1) << 16
         self.setOperValue(op, 0, val)
 
+    def i_movw(self, op):
+        val = self.getOperValue(op, 1)
+        self.setOperValue(op, 0, val)
+
     '''def i_adr(self, op):
         val = self.getOperValue(op, 1)
         self.setOperValue(op, 0, val)
@@ -1033,11 +1037,66 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         if regval:
             return imm32
 
+    def i_smulbb(self, op):
+        oper1 = op.getOperValue(1) & 0xffff
+        oper2 = op.getOperValue(2) & 0xffff
+
+        s1 = e_bits.signed(oper1 & 0xffff, 2)
+        s2 = e_bits.signed(oper2 & 0xffff, 2)
+
+        result = s1 * s2
+
+        op.setOperValue(0, result)
+
+    def i_smultb(self, op):
+        oper1 = op.getOperValue(1) & 0xffff
+        oper2 = op.getOperValue(2) & 0xffff
+
+        s1 = e_bits.signed(oper1 >> 16, 2)
+        s2 = e_bits.signed(oper2 & 0xffff, 2)
+
+        result = s1 * s2
+
+        op.setOperValue(0, result)
+
+    def i_smulbt(self, op):
+        oper1 = op.getOperValue(1) & 0xffff
+        oper2 = op.getOperValue(2) & 0xffff
+
+        s1 = e_bits.signed(oper1 & 0xffff, 2)
+        s2 = e_bits.signed(oper2 >> 16, 2)
+
+        result = s1 * s2
+
+        op.setOperValue(0, result)
+
+    def i_smultt(self, op):
+        oper1 = op.getOperValue(1) & 0xffff
+        oper2 = op.getOperValue(2) & 0xffff
+
+        s1 = e_bits.signed(oper1 >>16, 2)
+        s2 = e_bits.signed(oper2 >>16, 2)
+
+        result = s1 * s2
+
+        op.setOperValue(0, result)
+
     def i_tb(self, op):
         # TBB and TBH both come here.
         tblbase = op.getOperValue(0)
         off = op.getOperValue(1)
         return tblbase + (2*off)
+
+    def i_ubfx(self, op):
+        src = self.getOperValue(op, 1)
+        lsb = self.getOperValue(op, 2)
+        width = self.getOperValue(op, 3)
+        mask = (1 << width) - 1
+
+        val = (src>>lsb) & mask
+
+        self.setOperValue(op, 0, val)
+
 
     def i_umull(self, op):
         print("FIXME: 0x%x: %s - in emu" % (op.va, op))
@@ -1049,6 +1108,9 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         print("FIXME: 0x%x: %s - in emu" % (op.va, op))
     def i_umull(self, op):
         print("FIXME: 0x%x: %s - in emu" % (op.va, op))
+
+
+
 
     def i_pld2(self, op):
         print("FIXME: 0x%x: %s - in emu" % (op.va, op))
