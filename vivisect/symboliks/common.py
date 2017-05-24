@@ -607,6 +607,10 @@ class LookupVar (Var):
 
         return LookupVar(self.name, offset, lookupdict=self.lookupdict, width=self.width)
 
+    def _reduce(self, emu=None):
+        self.offset._reduce(emu=emu) 
+        return self
+
     def getWidth(self):
         return self.width
 
@@ -734,11 +738,6 @@ class Operator(SymbolikBase):
         return self.width
 
     def _reduce(self, emu=None):
-        if self._reduced:
-            return self
-
-        self._reduced = True
-
 
         v1 = self.kids[0]
         v2 = self.kids[1]
