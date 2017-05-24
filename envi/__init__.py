@@ -167,6 +167,10 @@ class ArchitectureModule:
                 return group
 
     def archGetValidSwitchcaseOperands(self):
+        '''
+        Returns a tuple of valid Operand types for dynamic branches which 
+        are used for Switch Cases.
+        '''
         raise ArchNotImplemented("archGetValidSwitchcaseOperands")
 
     def archModifyFuncAddr(self, va, arch):
