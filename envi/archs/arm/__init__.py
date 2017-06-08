@@ -61,15 +61,16 @@ class ArmModule(envi.ArchitectureModule):
         self._arch_dis.setEndian(endian)
         self._arch_thumb_dis.setEndian(endian)
 
-    def archModifyFuncAddr(self, va, arch):
+    def archModifyFuncAddr(self, va, info):
         if va & 1:
-            return va & -2, envi.ARCH_THUMB
-        return None, None
+            return va & -2, {'arch' : envi.ARCH_THUMB}
+        return va, {}
 
-    def archModifyXrefAddr(self, va):
-        if va & 1:
-            return va & -2
-        return None
+    def archModifyXrefAddr(self, tova, reftype, rflags):
+        if tova & 1:
+            return tova & -2, reftype, rflags
+        return tova, reftype, rflags
+
 
 class ThumbModule(envi.ArchitectureModule):
     '''
@@ -125,9 +126,15 @@ class ThumbModule(envi.ArchitectureModule):
             return va & -2, envi.ARCH_THUMB
         return None, None
 
-    def archModifyXrefAddr(self, va):
+    def archModifyFuncAddr(self, va, info):
         if va & 1:
-            return va & -2
-        return None
+            return va & -2, {'arch' : envi.ARCH_THUMB}
+        return va, {}
+
+    def archModifyXrefAddr(self, tova, reftype, rflags):
+        if tova & 1:
+            return tova & -2, reftype, rflags
+        return tova, reftype, rflags
+
 
 from envi.archs.arm.emu import *

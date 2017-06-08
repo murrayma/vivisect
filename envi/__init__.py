@@ -156,28 +156,25 @@ class ArchitectureModule:
         allr = [rname for rname in regctx.getRegisterNames()]
         return [ ('all', allr), ]
 
-    def archGetRegisterGroup(self, name):
+    def archModifyFuncAddr(self, va, info):
         '''
-        Returns a tuple of registers for a named register group.  Returns
-        None if requested name does not exist
-        '''
-        reg_groups = self.archGetRegisterGroups()
-        for gname, group in reg_groups:
-            if name == gname:
-                return group
+        Can modify the VA and context based on architecture-specific info.
+        Default: return the same va, info
 
-    def archGetValidSwitchcaseOperands(self):
+        This hook allows an architecture to correct VA and Architecture, such 
+        as is necessary for ARM/Thumb.
         '''
-        Returns a tuple of valid Operand types for dynamic branches which 
-        are used for Switch Cases.
+        return va, {}
+
+    def archModifyXrefAddr(self, tova, reftype, rflags):
         '''
-        raise ArchNotImplemented("archGetValidSwitchcaseOperands")
+        Returns a potentially modified set of (tova, reftype, rflags).
+        Default: return the same tova, reftype, rflags
 
-    def archModifyFuncAddr(self, va, arch):
-        return None, None
-
-    def archModifyXrefAddr(self, va):
-        return None
+        This hook allows an architecture to modify an Xref before it's set, 
+        which can be helpful for ARM/Thumb.
+        '''
+        return tova, reftype, rflags
 
     def archGetBadOps(self, byteslist=None):
         '''
