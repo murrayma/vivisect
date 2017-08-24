@@ -85,6 +85,10 @@ def analyzeFunction(vw, fva, prepend=False):
     for x in range(MAX_INIT_OPCODES):
         op = vw.parseOpcode(tva)
         emu.executeOpcode(op)
+
+        if op.iflags & envi.IF_NOFALL:
+            break
+
         if not len(op.opers):
             continue
 

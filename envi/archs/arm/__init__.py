@@ -121,11 +121,6 @@ class ThumbModule(envi.ArchitectureModule):
         self._endian = endian
         self._arch_dis.setEndian(endian)
 
-    def archModifyFuncAddr(self, va, arch):
-        if va & 1:
-            return va & -2, envi.ARCH_THUMB
-        return None, None
-
     def archModifyFuncAddr(self, va, info):
         if va & 1:
             return va & -2, {'arch' : envi.ARCH_THUMB}

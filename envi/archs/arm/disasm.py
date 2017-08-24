@@ -187,7 +187,12 @@ dp_shift_mnem = (
 # FIXME: THIS IS FUGLY but sadly it works
 dp_noRn = (13,15)
 dp_noRd = (8,9,10,11)
-dp_silS = (8,9,10,11)
+dp_silS = dp_noRd
+
+# IF_PSR_S_SIL is silent s for tst, teq, cmp cmn
+DP_PSR_S = [IF_PSR_S for x in range(17)]
+for x in dp_silS:
+    DP_PSR_S[x] |= IF_PSR_S_SIL 
 
 # FIXME: dp_MOV was supposed to be a tuple of opcodes that could be converted to MOV's if offset from PC.
 # somehow this list has vanished into the ether.  add seems like the right one here.
@@ -220,6 +225,8 @@ def p_dp_imm_shift(opval, va):
     if (shtype==3) & (shval ==0): # is it an rrx?
         shtype = 4
     mnem, opcode = dp_mnem[ocode]
+
+    iflags = 0
     if ocode in dp_noRn:# FIXME: FUGLY (and slow...)
         #is it a mov? Only if shval is a 0, type is lsl, and ocode = 13
         if  (ocode == 13) and ((shval != 0) or (shtype != 0)):
@@ -235,12 +242,15 @@ def p_dp_imm_shift(opval, va):
                     ArmRegOper(Rd, va=va),
                     ArmRegOper(Rm, va=va),
                 )
-                
         else:
             olist = (
                 ArmRegOper(Rd, va=va),
                 ArmRegShiftImmOper(Rm, shtype, shval, va),
             )
+            # case: mov pc, lr
+            if Rd == REG_PC and Rm == REG_LR:
+                iflags |= envi.IF_RET
+
     elif ocode in dp_noRd:
         olist = (
             ArmRegOper(Rn, va=va),
@@ -254,13 +264,8 @@ def p_dp_imm_shift(opval, va):
         )
 
     if sflag > 0:
-        # IF_PSR_S_SIL is silent s for tst, teq, cmp cmn
-        if ocode in dp_silS:
-            iflags = IF_PSR_S | IF_PSR_S_SIL
-        else:
-            iflags = IF_PSR_S
-    else:
-        iflags = 0
+        iflags |= DP_PSR_S[ocode]
+
     return (opcode, mnem, olist, iflags, 0)
 
 # specialized mnemonics for p_misc
@@ -663,10 +668,8 @@ def p_dp_reg_shift(opval, va):
 
     if sflag > 0:
         # IF_PSR_S_SIL is silent s for tst, teq, cmp cmn
-        if ocode in dp_silS:
-            iflags = IF_PSR_S | IF_PSR_S_SIL
-        else:
-            iflags = IF_PSR_S
+        iflags = DP_PSR_S[ocode] 
+
     else:
         iflags = 0
     return (opcode, mnem, olist, iflags, 0)
@@ -743,11 +746,7 @@ def p_dp_imm(opval, va):
         )
 
     if sflag > 0:
-        # IF_PSR_S_SIL is silent s for tst, teq, cmp cmn
-        if ocode in dp_silS:
-            iflags = IF_PSR_S | IF_PSR_S_SIL
-        else:
-            iflags = IF_PSR_S
+        iflags |= DP_PSR_S[ocode]
     else:
         iflags = 0
 
@@ -1491,7 +1490,7 @@ def p_vmov_double(opval, va):
     opcode = INS_VMOV
     mnem = 'vmov'
 
-    op = (val >> 20) & 1
+    op = (opval >> 20) & 1
 
     rt2 = (opval >> 16) & 0xf
     rt = (opval >> 12) & 0xf
@@ -3783,18 +3782,20 @@ class ArmOpcode(envi.Opcode):
         if self.prefixes != COND_AL:
             flags |= envi.BR_COND
 
-        if self.opcode in ( INS_B, INS_BX, INS_BL, INS_BLX, INS_BCC, INS_CBZ, INS_CBNZ ):
-            oper = self.opers[0]
+        if self.iflags & (envi.IF_BRANCH | envi.IF_CALL):
+            oper = self.opers[-1]
 
             # check for location being ODD
             operval = oper.getOperValue(self, emu)
+
             if operval == None:
                 # probably a branch to a register.  just return.
                 return ret
 
             if self.opcode in (INS_BLX, INS_BX):
                 if operval & 3:
-                    flags |= envi.ARCH_THUMB16
+                    flags |= envi.ARCH_THUMB
+                    operval &= -2
                 else:
                     flags |= envi.ARCH_ARMV7
 
@@ -3807,6 +3808,7 @@ class ArmOpcode(envi.Opcode):
             if self.iflags & envi.IF_CALL:
                 flags |= envi.BR_PROC
             ret.append((operval, flags))
+            print "getBranches: (0x%x) add  0x%x   %x"% (self.va, operval, flags)
 
         return ret
 
@@ -3826,7 +3828,7 @@ class ArmOpcode(envi.Opcode):
             mnem += 'l'
         elif (self.iflags & self.S_FLAG_MASK) == IF_PSR_S:
             mnem += 's'
-        elif daib_flags > 0:
+        elif daib_flags > 0 and (mnem != "push"):
             idx = ((daib_flags)>>(IF_DAIB_SHFT)) 
             mnem += daib[idx]
         else:
@@ -3846,78 +3848,7 @@ class ArmOpcode(envi.Opcode):
                 mnem += 'id'
 
             if self.simdflags:
-                if self.simdflags & IFS_S32_F64:
-                    mnem += '.s32.f64'
-                elif self.simdflags & IFS_S32_F32:
-                    mnem += '.s32.f32'
-                elif self.simdflags & IFS_U32_F64:
-                    mnem += '.u32.f64'
-                elif self.simdflags & IFS_U32_F32:
-                    mnem += '.u32.f32'
-                elif self.simdflags & IFS_F64_S32:
-                    mnem += '.f64.s32'
-                elif self.simdflags & IFS_F64_U32:
-                    mnem += '.f64.u32'
-                elif self.simdflags & IFS_F32_S32:
-                    mnem += '.f32.s32'
-                elif self.simdflags & IFS_F32_U32:
-                    mnem += '.f32.u32'
-                elif self.simdflags & IFS_F32_64:
-                    mnem += '.f32.f64'
-                elif self.simdflags & IFS_F64_32:
-                    mnem += '.f64.f32'
-                elif self.simdflags & IFS_F16_32:
-                    mnem += '.f16.f32'
-                elif self.simdflags & IFS_F32_16:
-                    mnem += '.f32.f16'
-                elif self.simdflags & IFS_F64:
-                    mnem += '.f64'
-                elif self.simdflags & IFS_S64:
-                    mnem += '.s64'
-                elif self.simdflags & IFS_U64:
-                    mnem += '.u64'
-                elif self.simdflags & IFS_I64:
-                    mnem += '.i64'
-                elif self.simdflags & IFS_F32:
-                    mnem += '.f32'
-                elif self.simdflags & IFS_S32:
-                    mnem += '.s32'
-                elif self.simdflags & IFS_U32:
-                    mnem += '.u32'
-                elif self.simdflags & IFS_I32:
-                    mnem += '.i32'
-                elif self.simdflags & IFS_F16:
-                    mnem += '.f16'
-                elif self.simdflags & IFS_S16:
-                    mnem += '.s16'
-                elif self.simdflags & IFS_U16:
-                    mnem += '.u16'
-                elif self.simdflags & IFS_I16:
-                    mnem += '.i16'
-                elif self.simdflags & IFS_F8:
-                    mnem += '.f8'
-                elif self.simdflags & IFS_S8:
-                    mnem += '.s8'
-                elif self.simdflags & IFS_U8:
-                    mnem += '.u8'
-                elif self.simdflags & IFS_I8:
-                    mnem += '.i8'
-                elif self.simdflags & IFS_P8:
-                    mnem += '.p8'
-                elif self.simdflags & IFS_P16:
-                    mnem += '.p16'
-                elif self.simdflags & IFS_P32:
-                    mnem += '.p32'
-                elif self.simdflags & IFS_P64:
-                    mnem += '.p64'
-                elif self.simdflags & IFS_8:
-                    mnem += '.8'
-                elif self.simdflags & IFS_16:
-                    mnem += '.16'
-                elif self.simdflags & IFS_32:
-                    mnem += '.32'
-                elif self.simdflags & IFS_64:
-                    mnem += '.64'
+                mnem += IFS[self.simdflags]
 
         #FIXME: Advanced SIMD modifiers (IF_V*)
         if self.iflags & IF_THUMB32:
@@ -3944,7 +3875,7 @@ class ArmOpcode(envi.Opcode):
             mnem += 'l'
         elif (self.iflags & self.S_FLAG_MASK) == IF_PSR_S:
             mnem += 's'
-        elif (daib_flags > 0) & (mnem != "push"):
+        elif (daib_flags > 0) and (mnem != "push"):
             idx = ((daib_flags)>>(IF_DAIB_SHFT)) 
             mnem += daib[idx]
         else:
@@ -3964,80 +3895,6 @@ class ArmOpcode(envi.Opcode):
                 mnem += 'id'
 
             if self.simdflags:
-                '''
-                if self.simdflags & IFS_S32_F64:
-                    mnem += '.s32.f64'
-                elif self.simdflags & IFS_S32_F32:
-                    mnem += '.s32.f32'
-                elif self.simdflags & IFS_U32_F64:
-                    mnem += '.u32.f64'
-                elif self.simdflags & IFS_U32_F32:
-                    mnem += '.u32.f32'
-                elif self.simdflags & IFS_F64_S32:
-                    mnem += '.f64.s32'
-                elif self.simdflags & IFS_F64_U32:
-                    mnem += '.f64.u32'
-                elif self.simdflags & IFS_F32_S32:
-                    mnem += '.f32.s32'
-                elif self.simdflags & IFS_F32_U32:
-                    mnem += '.f32.u32'
-                elif self.simdflags & IFS_F32_64:
-                    mnem += '.f32.f64'
-                elif self.simdflags & IFS_F64_32:
-                    mnem += '.f64.f32'
-                elif self.simdflags & IFS_F16_32:
-                    mnem += '.f16.f32'
-                elif self.simdflags & IFS_F32_16:
-                    mnem += '.f32.f16'
-                elif self.simdflags & IFS_F64:
-                    mnem += '.f64'
-                elif self.simdflags & IFS_S64:
-                    mnem += '.s64'
-                elif self.simdflags & IFS_U64:
-                    mnem += '.u64'
-                elif self.simdflags & IFS_I64:
-                    mnem += '.i64'
-                elif self.simdflags & IFS_F32:
-                    mnem += '.f32'
-                elif self.simdflags & IFS_S32:
-                    mnem += '.s32'
-                elif self.simdflags & IFS_U32:
-                    mnem += '.u32'
-                elif self.simdflags & IFS_I32:
-                    mnem += '.i32'
-                elif self.simdflags & IFS_F16:
-                    mnem += '.f16'
-                elif self.simdflags & IFS_S16:
-                    mnem += '.s16'
-                elif self.simdflags & IFS_U16:
-                    mnem += '.u16'
-                elif self.simdflags & IFS_I16:
-                    mnem += '.i16'
-                elif self.simdflags & IFS_F8:
-                    mnem += '.f8'
-                elif self.simdflags & IFS_S8:
-                    mnem += '.s8'
-                elif self.simdflags & IFS_U8:
-                    mnem += '.u8'
-                elif self.simdflags & IFS_I8:
-                    mnem += '.i8'
-                elif self.simdflags & IFS_P8:
-                    mnem += '.p8'
-                elif self.simdflags & IFS_P16:
-                    mnem += '.p16'
-                elif self.simdflags & IFS_P32:
-                    mnem += '.p32'
-                elif self.simdflags & IFS_P64:
-                    mnem += '.p64'
-                elif self.simdflags & IFS_8:
-                    mnem += '.8'
-                elif self.simdflags & IFS_16:
-                    mnem += '.16'
-                elif self.simdflags & IFS_32:
-                    mnem += '.32'
-                elif self.simdflags & IFS_64:
-                    mnem += '.64'
-                    '''
                 mnem += IFS[self.simdflags]
 
         if self.iflags & IF_THUMB32:
@@ -5012,6 +4869,7 @@ class ArmPSRFlagsOper(ArmOperand):
 
     def repr(self, op):
         return aif_flags[self.flags]
+    #FIXME: render?
 
 class ArmCoprocOpcodeOper(ArmOperand):
     def __init__(self, val):
@@ -5105,7 +4963,7 @@ class ArmCoprocOption(ArmImmOffsetOper):
         basereg = arm_regs[self.base_reg][0]
         mcanv.addText('[')
         mcanv.addNameText(basereg, typename='registers')
-        mcanv.addVaText('], {%s}' % self.offset)
+        mcanv.addText('], {%s}' % self.offset)
     def repr(self, op):
         return '[%s], {%s}' % (arm_regs[self.base_reg][0],self.offset)
 

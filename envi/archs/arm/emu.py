@@ -61,47 +61,55 @@ def _getRegIdx(idx, mode):
     ridx = reg_table[ridx]  # magic pointers allowing overlapping banks of registers
     return ridx
 
-def c0000(flags):
-    return flags & 4
 
-def c0001(flags):
-    return flags & 4 == 0
+ZC_bits = PSR_Z_bit | PSR_C_bit
+NC_bits = PSR_N_bit | PSR_C_bit
+NZ_bits = PSR_N_bit | PSR_Z_bit
+NV_bits = PSR_N_bit | PSR_V_bit
 
-def c0010(flags):
-    return flags & 2
 
-def c0011(flags):
-    return flags & 2 == 0
+def c0000(flags):   # EQ
+    return flags & PSR_Z_bit
 
-def c0100(flags):
-    return flags & 8
+def c0001(flags):   # NE
+    return flags & PSR_Z_bit == 0
 
-def c0101(flags):
-    return flags & 8 == 0
+def c0010(flags):   # CS
+    return flags & PSR_C_bit
 
-def c0110(flags):
-    return flags & 1
+def c0011(flags):   # CC
+    return flags & PSR_C_bit == 0
 
-def c0111(flags):
-    return flags & 1 == 0
+def c0100(flags):   # MI
+    return flags & PSR_N_bit
 
-def c1000(flags):
-    return (flags & 6) == 2
+def c0101(flags):   # PL
+    return flags & PSR_N_bit == 0
 
-def c1001(flags):
-    return (flags & 0xc) in (0, 4, 6) # C clear or Z set
+def c0110(flags):   # VS
+    return flags & PSR_V_bit
 
-def c1010(flags):
-    return (flags & 9) in (0, 9)    # N == V
+def c0111(flags):   # VC
+    return flags & PSR_V_bit == 0
 
-def c1011(flags):
-    return (flags & 9) in (1, 8)    # N != V
+def c1000(flags):   # HI
+    return (flags & ZC_bits) == PSR_C_bit   # C set and Z clear
 
-def c1100(flags):
-    return (flags & 4) == 0 and (flags & 9) in (0, 9)   # Z==0, N==V
+def c1001(flags):   # LS
+    #return (flags & NZ_bits) in (0, PSR_Z_bit, ZC_bits) # C clear or Z set
+    return (flags & PSR_C_bit == 0) or (flags & PSR_Z_bit) # C clear or Z set
 
-def c1101(flags):
-    return (flags & 4) or (flags & 9) in (1, 8)         # Z==1 or N!=V (basically, "not c1100")
+def c1010(flags):   # GE
+    return (flags & NV_bits) in (0, NV_bits)    # N == V
+
+def c1011(flags):   # LT
+    return (flags & NV_bits) in (PSR_V_bit, PSR_N_bit)    # N != V
+
+def c1100(flags):   # GT
+    return (flags & PSR_Z_bit) == 0 and (flags & NV_bits) in (0, NV_bits)   # Z==0, N==V
+
+def c1101(flags):   # LE
+    return (flags & PSR_Z_bit) or (flags & NV_bits) in (PSR_V_bit, PSR_N_bit)         # Z==1 or N!=V (basically, "not c1100")
 
 
 conditionals = [
@@ -121,17 +129,16 @@ conditionals = [
         c1101,
         ]
 
+top_bits_32 = [(e_bits.u_maxes[4] ^ ((e_bits.u_maxes[4]>>x))) for x in range(4*8)]
 
 LSB_FMT = [0, 'B', '<H', 0, '<I', 0, 0, 0, '<Q',]
 MSB_FMT = [0, 'B', '>H', 0, '>I', 0, 0, 0, '>Q',]
 LSB_FMT_SIGNED = [0, 'b', '<h', 0, '<i', 0, 0, 0, '<q',]
 MSB_FMT_SIGNED = [0, 'b', '>h', 0, '>i', 0, 0, 0, '>q',]
 
-class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
+class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     def __init__(self):
-        ArmModule.__init__(self)
-
         # FIXME: this should be None's, and added in for each real coproc... but this will work for now.
         self.coprocs = [CoProcEmulator(x) for x in xrange(16)]       
         self.int_handlers = [self.default_int_handler for x in range(100)]
@@ -194,13 +201,28 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         endian_fmt = (LSB_FMT_SIGNED, MSB_FMT_SIGNED)[self.getEndian()]
         return struct.unpack(endian_fmt[size], bytes)[0]
 
+    def parseOpcode(self, va, arch=envi.ARCH_DEFAULT):
+        '''
+        Parse an opcode from the specified virtual address.
+
+        Example: op = m.parseOpcode(0x7c773803)
+
+        note: differs from the IMemory interface by checking loclist
+        '''
+        if arch == envi.ARCH_DEFAULT:
+            arch = (envi.ARCH_ARMV7, envi.ARCH_THUMB)[self.getFlag(PSR_T_bit)]
+
+        off, b = self.getByteDef(va)
+        return self.imem_archs[ (arch & envi.ARCH_MASK) >> 16 ].archParseOpcode(b, off, va)
+
     def executeOpcode(self, op):
         # NOTE: If an opcode method returns
         #       other than None, that is the new eip
         try:
             self.setMeta('forrealz', True)
             x = None
-            if op.prefixes >= 0xe or conditionals[op.prefixes](self.getRegister(REG_FLAGS)>>28):
+            #if op.prefixes >= 0xe or conditionals[op.prefixes](self.getRegister(REG_FLAGS)>>28):
+            if op.prefixes >= 0xe or conditionals[op.prefixes](self.getRegister(REG_FLAGS)):
                 meth = self.op_methods.get(op.mnem, None)
                 if meth == None:
                     raise envi.UnsupportedInstruction(self, op)
@@ -447,7 +469,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
 
         res = src1 & src2
 
-        if op.iflags & IF_S:
+        if op.iflags & IF_PSR_S:
             self.setFlag(PSR_N_bit, 0)
             self.setFlag(PSR_Z_bit, not res)
             self.setFlag(PSR_C_bit, 0)
@@ -479,7 +501,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         val = val1 | val2
         self.setOperValue(op, 0, val)
 
-        Sflag = op.iflags & IF_S # FIXME: IF_PSR_S???
+        Sflag = op.iflags & IF_PSR_S
         if Sflag:
             self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
             self.setFlag(PSR_Z_bit, not val)
@@ -543,40 +565,6 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
     i_stmia = i_stm
     i_push = i_stmia
 
-    '''
-    def i_push(self, op):
-        srcreg = op.opers[0].reg
-        addr = self.getOperValue(op,0)
-        regvals = self.getOperValue(op, 1)
-        regmask = op.opers[1].val
-        pc = self.getRegister(REG_PC)       # store for later check
-
-        addr = self.getRegister(srcreg)
-        for val in regvals:
-            if op.iflags & IF_DAIB_B == IF_DAIB_B:
-                if op.iflags & IF_DAIB_I == IF_DAIB_I:
-                    addr += 4
-                else:
-                    addr -= 4
-                self.writeMemValue(addr, val, 4)
-            else:
-                self.writeMemValue(addr, val, 4)
-                if op.iflags & IF_DAIB_I == IF_DAIB_I:
-                    addr += 4
-                else:
-                    addr -= 4
-
-        if op.opers[0].oflags & OF_W:
-            self.setRegister(srcreg,addr)
-        #FIXME: add "shared memory" functionality?  prolly just in strex which will be handled in i_strex
-        # is the following necessary?  
-        newpc = self.getRegister(REG_PC)    # check whether pc has changed
-        if pc != newpc:
-            return newpc
-'''
-
-
-
     def i_ldm(self, op):
         if len(op.opers) == 2:
             srcreg = op.opers[0].reg
@@ -621,67 +609,25 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
                         regval = self.readMemValue(addr, 4)
                         self.setRegister(reg, regval)
                         addr -= 4
-        '''
-        for reg in xrange(16):
-            if (1<<reg) & regmask:
-                if flags & IF_DAIB_B == IF_DAIB_B:
-                    if flags & IF_DAIB_I == IF_DAIB_I:
-                        addr += 4
-                    else:
-                        addr -= 4
-                    regval = self.readMemValue(addr, 4)
-                    self.setRegister(reg, regval)
-                else:
-                    regval = self.readMemValue(addr, 4)
-                    self.setRegister(reg, regval)
-                    if flags & IF_DAIB_I == IF_DAIB_I:
-                        addr += 4
-                    else:
-                        addr -= 4
-        '''
+
         if updatereg:
             self.setRegister(srcreg,addr)
         #FIXME: add "shared memory" functionality?  prolly just in ldrex which will be handled in i_ldrex
         # is the following necessary?  
         newpc = self.getRegister(REG_PC)    # check whether pc has changed
         if pc != newpc:
+            self.setThumbMode(newpc & 1)
             return newpc
 
     i_ldmia = i_ldm
     i_pop = i_ldmia
 
-    '''
-    def i_pop(self, op):
-        srcreg = op.opers[0].reg
-        addr = self.getOperValue(op,0)
-        #regmask = self.getOperValue(op,1)
-        regmask = op.opers[1].val
-        pc = self.getRegister(REG_PC)       # store for later check
 
-        for reg in xrange(16):
-            if (1<<reg) & regmask:
-                if op.iflags & IF_DAIB_B == IF_DAIB_B:
-                    if op.iflags & IF_DAIB_I == IF_DAIB_I:
-                        addr += 4
-                    else:
-                        addr -= 4
-                    regval = self.readMemValue(addr, 4)
-                    self.setRegister(reg, regval)
-                else:
-                    regval = self.readMemValue(addr, 4)
-                    self.setRegister(reg, regval)
-                    if op.iflags & IF_DAIB_I == IF_DAIB_I:
-                        addr += 4
-                    else:
-                        addr -= 4
-        if op.opers[0].oflags & OF_W:
-            self.setRegister(srcreg,addr)
-        #FIXME: add "shared memory" functionality?  prolly just in ldrex which will be handled in i_ldrex
-        # is the following necessary?  
-        newpc = self.getRegister(REG_PC)    # check whether pc has changed
-        if pc != newpc:
-            return newpc
-        '''
+    def setThumbMode(self, thumb=1):
+        self.setFlag(PSR_T_bit, thumb)
+
+    def setArmMode(self, arm=1):
+        self.setFlag(PSR_T_bit, not thumb)
 
     def i_ldr(self, op):
         # hint: covers ldr, ldrb, ldrbt, ldrd, ldrh, ldrsh, ldrsb, ldrt   (any instr where the syntax is ldr{condition}stuff)
@@ -689,28 +635,36 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         val = self.getOperValue(op, 1)
         self.setOperValue(op, 0, val)
         if op.opers[0].reg == REG_PC:
-            return val
+            self.setThumbMode(val & 1)
+            return val & -2
 
     def i_mov(self, op):
         val = self.getOperValue(op, 1)
         self.setOperValue(op, 0, val)
 
+        if op.iflags & IF_PSR_S:
+            dsize = op.opers[0].tsize
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
+            self.setFlag(PSR_Z_bit, not val)
+
+        if op.iflags & envi.IF_RET:
+            self.setThumbMode(val & 1)
+            return val & -2
+
+        dest = op.opers[0]
+        if isinstance(dest, ArmRegOper) and dest.reg == REG_PC:
+            self.setThumbMode(val & 1)
+            return val & -2
+
     def i_movt(self, op):
+        base = self.getOperValue(op, 0) & 0xffff
         val = self.getOperValue(op, 1) << 16
-        self.setOperValue(op, 0, val)
+        self.setOperValue(op, 0, base | val)
 
     def i_movw(self, op):
         val = self.getOperValue(op, 1)
         self.setOperValue(op, 0, val)
 
-    '''def i_adr(self, op):
-        val = self.getOperValue(op, 1)
-        self.setOperValue(op, 0, val)
-
-    def i_msr(self, op):
-        val = self.getOperValue(op, 1)
-        self.setOperValue(op, 0, val)
-'''
     i_msr = i_mov
     i_adr = i_mov
 
@@ -724,6 +678,8 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         # need to check that t variants only allow non-priveleged access (strt, strht etc)
         val = self.getOperValue(op, 0)
         self.setOperValue(op, 1, val)
+
+    i_strh = i_str
 
     def i_add(self, op):
         if len(op.opers) == 3:
@@ -754,7 +710,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         self.setOperValue(op, 0, ures)
 
         curmode = self.getProcMode() 
-        if op.iflags & IF_S:
+        if op.iflags & IF_PSR_S:
             if op.opers[0].reg == 15 and (curmode != PM_sys and curmode != PM_usr):
                 self.setCPSR(self.getSPSR(curmode))
             else:
@@ -789,7 +745,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
 
     def i_b(self, op):
         '''
-        conditional branches (eg. bne) will be handled here
+        conditional branches (eg. bne) will be handled here. they are all CONDITIONAL 'b'
         '''
         return self.getOperValue(op, 0)
 
@@ -807,6 +763,10 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         target = self.getOperValue(op, 0)
         self.setFlag(PSR_T_bit, target & 1)
         return target
+
+    def i_svc(self, op):
+        svc = self.getOperValue(op, 0)
+        print("Service 0x%x called at 0x%x" % (svc, op.va))
 
     def i_tst(self, op):
         src1 = self.getOperValue(op, 0)
@@ -857,7 +817,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         self.setOperValue(op, 0, ures)
 
         curmode = self.getProcMode() 
-        if op.iflags & IF_S:
+        if op.iflags & IF_PSR_S:
             if op.opers[0].reg == 15:
                 if (curmode != PM_sys and curmode != PM_usr):
                     self.setCPSR(self.getSPSR(curmode))
@@ -940,7 +900,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         self.setOperValue(op, 0, ures)
 
         curmode = self.getProcMode() 
-        if op.iflags & IF_S:
+        if op.iflags & IF_PSR_S:
             if op.opers[0].reg == 15:
                 if (curmode != PM_sys and curmode != PM_usr):
                     self.setCPSR(self.getSPSR(curmode))
@@ -997,7 +957,7 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         val &= ~const
         self.setOperValue(op, 0, val)
 
-        Sflag = op.iflags & IF_S # FIXME: IF_PSR_S???
+        Sflag = op.iflags & IF_PSR_S # FIXME: IF_PSR_S???
         if Sflag:
             self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
             self.setFlag(PSR_Z_bit, not val)
@@ -1017,12 +977,120 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         val = Rn * Rm
         self.setOperValue(op, 0, val)
 
-        Sflag = op.iflags & IF_S
+        Sflag = op.iflags & IF_PSR_S
         if Sflag:
             self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, 4))
             self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+
+    def i_lsl(self, op):
+        if len(op.opers) == 3:
+            src = self.getOperValue(op, 1)
+            imm5 = self.getOperValue(op, 2)
+
+        else:
+            src = self.getOperValue(op, 0)
+            imm5 = self.getOperValue(op, 1)
+
+        val = src << imm5
+        carry = (val >> 32) & 1
+        self.setOperValue(op, 0, val)
+
+        Sflag = op.iflags & IF_PSR_S
+        if Sflag:
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_Z_bit, not val)
+            self.setFlag(PSR_C_bit, carry)
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+
+    def i_lsr(self, op):
+        if len(op.opers) == 3:
+            src = self.getOperValue(op, 1)
+            imm5 = self.getOperValue(op, 2)
+
+        else:
+            src = self.getOperValue(op, 0)
+            imm5 = self.getOperValue(op, 1)
+
+        val = src >> imm5
+        carry = (src >> (imm5-1)) & 1
+        self.setOperValue(op, 0, val)
+
+        Sflag = op.iflags & IF_PSR_S
+        if Sflag:
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_Z_bit, not val)
+            self.setFlag(PSR_C_bit, carry)
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+
+    def i_asr(self, op):
+        if len(op.opers) == 3:
+            src = self.getOperValue(op, 1)
+            srclen = op.opers[1].tsize
+            imm5 = self.getOperValue(op, 2)
+
+        else:
+            src = self.getOperValue(op, 0)
+            srclen = op.opers[0].tsize
+            imm5 = self.getOperValue(op, 1)
+
+        if e_bits.is_signed(src, srclen):
+            val = (src >> imm5) | top_bits_32[imm5]
+        else:
+            val = (src >> imm5)
+
+        carry = (src >> (imm5-1)) & 1
+        self.setOperValue(op, 0, val)
+
+        Sflag = op.iflags & IF_PSR_S
+        if Sflag:
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_Z_bit, not val)
+            self.setFlag(PSR_C_bit, carry)
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+
+    def i_ror(self, op):
+        if len(op.opers) == 3:
+            src = self.getOperValue(op, 1)
+            imm5 = self.getOperValue(op, 2)
+
+        else:
+            src = self.getOperValue(op, 0)
+            imm5 = self.getOperValue(op, 1)
+
+        val = ((src >> imm5) | (src << 32-imm5)) & 0xffffffff
+        carry = (val >> 31) & 1
+        self.setOperValue(op, 0, val)
+
+        Sflag = op.iflags & IF_PSR_S
+        if Sflag:
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_Z_bit, not val)
+            self.setFlag(PSR_C_bit, carry)
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+
+    def i_rrx(self, op):
+        if len(op.opers) == 3:
+            src = self.getOperValue(op, 1)
+            imm5 = self.getOperValue(op, 2)
+
+        else:
+            src = self.getOperValue(op, 0)
+            imm5 = self.getOperValue(op, 1)
+
+        carry_in = self.getFlag(PSR_C_bit)
+
+        val = (carry_in<<31) | (src >> 1)
+        carry = src & 1
+        self.setOperValue(op, 0, val)
+
+        Sflag = op.iflags & IF_PSR_S
+        if Sflag:
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_Z_bit, not val)
+            self.setFlag(PSR_C_bit, carry)
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
 
 
     def i_cbz(self, op):
@@ -1159,7 +1227,23 @@ class ArmEmulator(ArmModule, ArmRegisterContext, envi.Emulator):
         coproc = self._getCoProc(cpnum)
         coproc.mcrr(op.opers)
 
+    def i_nop(self, op):
+        pass
 
+    i_dmb = i_nop
+    i_dsb = i_nop
+    i_isb = i_nop
+
+    def i_vmrs(self, op):
+        src = self.getRegister(REG_FPSCR)
+        if op.opers[0].reg != 15:
+            self.setOperValue(op, 0, src)
+        else:
+            apsr = self.getCPSR() & 0x0fffffff
+            apsr |= (src | 0xf0000000)
+            self.setOperValue(op, 0, apsr)
+
+#TODO: IT EQ
 
 
 opcode_dist = \
