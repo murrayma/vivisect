@@ -228,7 +228,8 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             makeStringTable(vw, sva, sva+size)
 
     # Let pyelf do all the stupid string parsing...
-    for r in elf.getRelocs():
+    relocs = elf.getRelocs()
+    for r in relocs:
         rtype = Elf.getRelocType(r.r_info)
         rlva = r.r_offset
         if addbase: rlva += baseaddr
@@ -237,7 +238,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             # resolved "import" entry, otherwise, just a regular reloc
             if arch in ('i386','amd64'):
 
-                name = r.getName()
+                name = decode(r.getName())
                 if name:
                     if rtype == Elf.R_386_JMP_SLOT:
                         vw.makeImport(rlva, "*", name)
@@ -249,8 +250,12 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                     elif rtype == Elf.R_386_32:
                         pass
 
+                    elif rtype == Elf.R_X86_64_GLOB_DAT:
+                        vw.makeImport(rlva, "*", name)
+
                     else:
                         vw.verbprint('unknown reloc type: %d %s (at %s)' % (rtype, name, hex(rlva)))
+                        
 
             if arch == 'arm':
                 name = r.getName()
@@ -273,9 +278,12 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         if sva == 0:
             continue
 
+        decodedname = decode(s.name)
+        sname = pyfriendlyName(decodedname)
+
         if stype == Elf.STT_FUNC or (stype == Elf.STT_GNU_IFUNC and arch in ('i386','amd64')):   # HACK: linux is what we're really after.
             try:
-                vw.addExport(sva, EXP_FUNCTION, s.name, fname)
+                vw.addExport(sva, EXP_FUNCTION, sname, fname)
                 vw.addEntryPoint(sva)
             except Exception, e:
                 vw.vprint('addExport Failure: %s' % e)
@@ -283,7 +291,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         elif stype == Elf.STT_OBJECT:
             if vw.isValidPointer(sva):
                 try:
-                    vw.addExport(sva, EXP_DATA, s.name, fname)
+                    vw.addExport(sva, EXP_DATA, sname, fname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
@@ -294,7 +302,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             if addbase: sva += baseaddr
             if vw.isValidPointer(sva):
                 try:
-                    vw.addExport(sva, EXP_FUNCTION, s.name, fname)
+                    vw.addExport(sva, EXP_FUNCTION, sname, fname)
                     vw.addEntryPoint(sva)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
@@ -306,7 +314,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             if addbase: sva += baseaddr
             if vw.isValidPointer(sva):
                 try:
-                    vw.addExport(sva, EXP_DATA, s.name, fname)
+                    vw.addExport(sva, EXP_DATA, sname, fname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
@@ -326,18 +334,91 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
 
     for s in elf.getSymbols():
         sva = s.st_value
+
+        # if the symbol has a value of 0, it is likely a relocation point which gets updated
+        sname = normName(s.name)
+        if sva == 0:
+            for reloc in relocs:
+                rname = normName(reloc.name)
+                if rname == sname:
+                    sva = reloc.r_offset
+                    break
+
+        decodedname = decode(sname)
+        sname = pyfriendlyName(decodedname)
+
         if addbase: sva += baseaddr
-        if vw.isValidPointer(sva) and len(s.name):
+        vw.setComment(sva, decodedname)
+        if vw.isValidPointer(sva) and len(sname):
             try:
-                vw.makeName(sva, "%s_%x" % (s.name,sva), filelocal=True)
+                vw.makeName(sva, "%s_%x" % (sname,sva), filelocal=True)
             except Exception, e:
                 print "WARNING:",e
 
-    if vw.isValidPointer(elf.e_entry):
-        vw.addExport(elf.e_entry, EXP_FUNCTION, '__entry', fname)
-        vw.addEntryPoint(elf.e_entry)
+    if addbase:
+        eentry = baseaddr + elf.e_entry
+    else:
+        eentry = elf.e_entry
+
+    if vw.isValidPointer(eentry):
+        vw.addExport(eentry, EXP_FUNCTION, '__entry', fname)
+        vw.addEntryPoint(eentry)
         
     if vw.isValidPointer(baseaddr):
         vw.makeStructure(baseaddr, "elf.Elf32")
 
     return fname
+
+def normName(name):
+    atidx = name.find('@@')
+    if atidx > -1:
+        name = name[:atidx]
+    return name
+
+import string
+chars_ok = string.letters + string.digits + '_'# + ':'# + '~'
+chars_cok = ("%$#*<>~")
+
+def pyfriendlyName(name):
+    out = []
+    normname = os.path.basename(name)
+
+    lastcok = False
+    chars = list(normname)
+
+    for i in xrange(len(chars)):
+        if chars[i] not in chars_ok:
+            if chars[i] in chars_cok:
+                x = "%.2X" % ord(chars[i])
+                out.append(x)
+                if not lastcok:
+                    # prepend on front
+                    out.insert(i, '_')
+
+                lastcok = True
+
+            else:
+                out.append('_')
+                lastcok = False
+
+        else:
+            if lastcok:
+                # if last was a 'cok' and this is just ok...
+                out.append('_')
+            out.append(chars[i])
+
+            lastcok = False
+
+    normname = ''.join(out)
+    return normname
+
+def decode(name):
+    name = normName(name)
+
+    try:
+        import cxxfilt
+        name = cxxfilt.demangle(name)
+    except:
+        pass
+
+    return name
