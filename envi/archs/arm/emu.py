@@ -11,7 +11,7 @@ import envi.bits as e_bits
 from envi.const import *
 from envi.archs.arm.regs import *
 from envi.archs.arm import ArmModule
-from envi.archs.arm.disasm import ArmRegOper
+from envi.archs.arm.disasm import ArmRegOper, ArmRegShiftImmOper
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setMeta('forrealz', True)
             x = None
             #if op.prefixes >= 0xe or conditionals[op.prefixes](self.getRegister(REG_FLAGS)>>28):
-            if op.prefixes >= 0xe or conditionals[op.prefixes](self.getRegister(REG_FLAGS)):
+            
+            condval = (op.prefixes >= 0xe)
+            if not condval:
+                condcheck = conditionals[op.prefixes]
+                condval = condcheck(self.getRegister(REG_FLAGS))
+
+            if condval:
                 meth = self.op_methods.get(op.mnem, None)
                 if meth == None:
                     raise envi.UnsupportedInstruction(self, op)
@@ -374,7 +380,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         return self.intSubBase(src1, src2, Sflag)
 
-    def AddWithCarry(self, src1, src2, carry=0, Sflag=0, rd=0):
+    def AddWithCarry(self, src1, src2, carry=0, Sflag=0, rd=0, tsize=4):
         '''////AddWithCarry()
         ==============
         (bits(N), bit, bit) AddWithCarry(bits(N) x, bits(N) y, bit carry_in)
@@ -399,18 +405,18 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         subtractions as well as carry flags for additions.
         (@ we don't retrn carry-out and overflow, but set the flags here)
         '''
-        udst = e_bits.unsigned(src1, 4)
-        usrc = e_bits.unsigned(src2, 4)
+        udst = e_bits.unsigned(src1, tsize)
+        usrc = e_bits.unsigned(src2, tsize)
 
-        sdst = e_bits.signed(src1, 4)
-        ssrc = e_bits.signed(src2, 4)
+        sdst = e_bits.signed(src1, tsize)
+        ssrc = e_bits.signed(src2, tsize)
 
-        ures = (udst + usrc + carry) & 0xffffffff
-        sres = (sdst + ssrc + carry)
+        ures = e_bits.unsigned(udst + usrc + carry, tsize)
+        sres = e_bits.signed(sdst + ssrc + carry, tsize)
         result = ures & 0x7fffffff
 
-        #newcarry = (ures != result)
-        newcarry = (udst >= usrc)
+        newcarry = (ures != result)
+        #newcarry = (udst >= usrc)
         overflow = (sres != result)
 
         if Sflag:
@@ -421,24 +427,24 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                 else:
                     raise Exception("Messed up opcode...  adding to r15 from PM_usr or PM_sys")
             else:
-                self.setFlag(PSR_N_bit, e_bits.is_signed(ures, 4))
-                self.setFlag(PSR_Z_bit, not ures)
+                self.setFlag(PSR_N_bit, e_bits.is_signed(result, tsize))
+                self.setFlag(PSR_Z_bit, not result)
                 self.setFlag(PSR_C_bit, newcarry)
                 self.setFlag(PSR_V_bit, overflow)
 
-        return ures
+        return result
 
-    def intSubBase(self, src1, src2, Sflag=0, rd=0):
+    def intSubBase(self, src1, src2, Sflag=0, rd=0, tsize=4):
         # So we can either do a BUNCH of crazyness with xor and shifting to
         # get the necessary flags here, *or* we can just do both a signed and
         # unsigned sub and use the results.
 
 
-        udst = e_bits.unsigned(src1, 4)
-        usrc = e_bits.unsigned(src2, 4)
+        udst = e_bits.unsigned(src1, tsize)
+        usrc = e_bits.unsigned(src2, tsize)
 
-        sdst = e_bits.signed(src1, 4)
-        ssrc = e_bits.signed(src2, 4)
+        sdst = e_bits.signed(src1, tsize)
+        ssrc = e_bits.signed(src2, tsize)
 
         ures = udst - usrc
         sres = sdst - ssrc
@@ -450,10 +456,10 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                     self.setCPSR(self.getSPSR(curmode))
                 else:
                     raise Exception("Messed up opcode...  adding to r15 from PM_usr or PM_sys")
-            self.setFlag(PSR_N_bit, e_bits.is_signed(ures, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(ures, tsize))
             self.setFlag(PSR_Z_bit, not ures)
-            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, 4))
-            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(sres, 4))
+            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, tsize))
+            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(sres, tsize))
 
         return ures
 
@@ -496,6 +502,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         self.setOperValue(op, 0, res)
         
     def i_orr(self, op):
+        tsize = op.opers[0].tsize
         val1 = self.getOperValue(op, 1)
         val2 = self.getOperValue(op, 2)
         val = val1 | val2
@@ -503,10 +510,10 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, tsize))
             self.setFlag(PSR_Z_bit, not val)
-            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, 4))
-            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, tsize))
+            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, tsize))
         
     def i_stm(self, op):
         if len(op.opers) == 2:
@@ -638,6 +645,15 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setThumbMode(val & 1)
             return val & -2
 
+    i_ldrb = i_ldr
+    i_ldrbt = i_ldr
+    i_ldrd = i_ldr
+    i_ldrh = i_ldr
+    i_ldrht = i_ldr
+    i_ldrsh = i_ldr
+    i_ldrsb = i_ldr
+    i_ldrt = i_ldr
+
     def i_mov(self, op):
         val = self.getOperValue(op, 1)
         self.setOperValue(op, 0, val)
@@ -680,6 +696,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         self.setOperValue(op, 1, val)
 
     i_strh = i_str
+    i_strb = i_str
+    i_strbt = i_str
+    i_strd = i_str
+    i_strh = i_str
+    i_strsh = i_str
+    i_strsb = i_str
+    i_strt = i_str
+
 
     def i_add(self, op):
         if len(op.opers) == 3:
@@ -698,10 +722,10 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         dsize = op.opers[0].tsize
         ssize = op.opers[1].tsize
 
-        usrc1 = e_bits.unsigned(src1, 4)
-        usrc2 = e_bits.unsigned(src2, 4)
-        ssrc1 = e_bits.signed(src1, 4)
-        ssrc2 = e_bits.signed(src2, 4)
+        usrc1 = e_bits.unsigned(src1, dsize)
+        usrc2 = e_bits.unsigned(src2, dsize)
+        ssrc1 = e_bits.signed(src1, dsize)
+        ssrc2 = e_bits.signed(src2, dsize)
 
         ures = usrc1 + usrc2
         sres = ssrc1 + ssrc2
@@ -756,13 +780,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     def i_bx(self, op):
         target = self.getOperValue(op, 0)
         self.setFlag(PSR_T_bit, target & 1)
-        return target
+        return target & -2
 
     def i_blx(self, op):
         self.setRegister(REG_LR, self.getRegister(REG_PC) + len(op))
         target = self.getOperValue(op, 0)
         self.setFlag(PSR_T_bit, target & 1)
-        return target
+        return target & -2
 
     def i_svc(self, op):
         svc = self.getOperValue(op, 0)
@@ -788,8 +812,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         ures = src1 ^ src2
 
         self.setFlag(PSR_N_bit, e_bits.is_signed(ures, dsize))
-        self.setFlag(PSR_Z_bit, (0,1)[ures==0])
-        self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, dsize))
+        self.setFlag(PSR_Z_bit, not ures)
+        oper = op.opers[1]
+        if isinstance(oper, ArmRegShiftImmOper):
+            if oper.shimm == 0:
+                return
+            print('FIXME: TEQ - do different shift types for Carry flag')
+            # FIXME: make the operands handle a ThumbExpandImm_C (for immediate) or Shift_C (for RegShiftImm), etc...
+            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, dsize))
         #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(sres, dsize))
         
     def i_rsb(self, op):
@@ -805,10 +835,10 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         dsize = op.opers[0].tsize
         ssize = op.opers[1].tsize
 
-        usrc1 = e_bits.unsigned(src1, 4)
-        usrc2 = e_bits.unsigned(src2, 4)
-        ssrc1 = e_bits.signed(src1, 4)
-        ssrc2 = e_bits.signed(src2, 4)
+        usrc1 = e_bits.unsigned(src1, dsize)
+        usrc2 = e_bits.unsigned(src2, dsize)
+        ssrc1 = e_bits.signed(src1, dsize)
+        ssrc2 = e_bits.signed(src2, dsize)
 
         ures = usrc2 - usrc1
         sres = ssrc2 - ssrc1
@@ -857,8 +887,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     def i_sub(self, op):
         # Src op gets sign extended to dst
         #FIXME account for same operand with zero result for PDE
-        src1 = self.getOperValue(op, 1)
-        src2 = self.getOperValue(op, 2)
+        if len(op.opers) > 2:
+            src1 = self.getOperValue(op, 1)
+            src2 = self.getOperValue(op, 2)
+        else:
+            src1 = self.getOperValue(op, 0)
+            src2 = self.getOperValue(op, 1)
+
         Sflag = op.iflags & IF_PSR_S
 
         if src1 == None or src2 == None:
@@ -872,8 +907,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     def i_sbc(self, op):
         # Src op gets sign extended to dst
-        src1 = self.getOperValue(op, 1)
-        src2 = self.getOperValue(op, 2)
+        if len(op.opers) > 2:
+            src1 = self.getOperValue(op, 1)
+            src2 = self.getOperValue(op, 2)
+        else:
+            src1 = self.getOperValue(op, 0)
+            src2 = self.getOperValue(op, 1)
+
         Sflag = op.iflags & IF_PSR_S
         Carry = self.getFlag(PSR_C_bit)
 
@@ -883,6 +923,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         self.setOperValue(op, 0, res)
 
     def i_eor(self, op):
+        dsize = op.opers[0].tsize
         src1 = self.getOperValue(op, 1)
         src2 = self.getOperValue(op, 2)
         
@@ -892,8 +933,8 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setOperValue(op, 0, None)
             return
 
-        usrc1 = e_bits.unsigned(src1, 4)
-        usrc2 = e_bits.unsigned(src2, 4)
+        usrc1 = e_bits.unsigned(src1, dsize)
+        usrc2 = e_bits.unsigned(src2, dsize)
 
         ures = usrc1 ^ usrc2
 
@@ -906,10 +947,10 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                     self.setCPSR(self.getSPSR(curmode))
                 else:
                     raise Exception("Messed up opcode...  adding to r15 from PM_usr or PM_sys")
-            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, 4))
+            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, dsize))
             self.setFlag(PSR_Z_bit, not ures)
-            self.setFlag(PSR_N_bit, e_bits.is_signed(ures, 4))
-            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(sres, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(ures, dsize))
+            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(ures, dsize))
 
     def i_cmp(self, op):
         # Src op gets sign extended to dst
@@ -951,7 +992,36 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     i_cmps = i_cmp
 
+    def i_uxth(self, op):
+        val = self.getOperValue(op, 1)
+        self.setOperValue(op, 0, val)
+
+    def i_uxtah(self, op):
+        val = self.getOperValue(op, 2)
+        val += self.getOperValue(op, 1)
+
+        self.setOperValue(op, 0, val)
+
+    def i_sxth(self, op):
+        slen = op.opers[1].tsize
+        dlen = op.opers[0].tsize
+
+        val = self.getOperValue(op, 1)
+        val = ebits.sign_extend(val, slen, dlen)
+        self.setOperValue(op, 0, val)
+
+    def i_sxtah(self, op):
+        slen = op.opers[2].tsize
+        dlen = op.opers[0].tsize
+
+        val = self.getOperValue(op, 2)
+        val = ebits.sign_extend(val, slen, dlen)
+        val += self.getOperValue(op, 1)
+
+        self.setOperValue(op, 0, val)
+
     def i_bic(self, op):
+        dsize = op.opers[0].tsize
         val = self.getOperValue(op, 1)
         const = self.getOperValue(op, 2)
         val &= ~const
@@ -959,16 +1029,17 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S # FIXME: IF_PSR_S???
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
             self.setFlag(PSR_Z_bit, not val)
-            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, 4))
-            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, dsize))
+            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
 
     def i_swi(self, op):
         # this causes a software interrupt.  we need a good way to handle interrupts
         self.interrupt(op.opers[0].val)
 
     def i_mul(self, op):
+        dsize = op.opers[0].tsize
         Rn = self.getOperValue(op, 1)
         if len(op.opers) == 3:
             Rm = self.getOperValue(op, 2)
@@ -979,12 +1050,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
             self.setFlag(PSR_Z_bit, not val)
-            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, 4))
-            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, dsize))
+            self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
 
     def i_lsl(self, op):
+        dsize = op.opers[0].tsize
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
             imm5 = self.getOperValue(op, 2)
@@ -999,12 +1071,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, carry)
-            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
 
     def i_lsr(self, op):
+        dsize = op.opers[0].tsize
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
             imm5 = self.getOperValue(op, 2)
@@ -1019,12 +1092,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, carry)
-            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
 
     def i_asr(self, op):
+        dsize = op.opers[0].tsize
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
             srclen = op.opers[1].tsize
@@ -1045,12 +1119,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, carry)
-            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
 
     def i_ror(self, op):
+        dsize = op.opers[0].tsize
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
             imm5 = self.getOperValue(op, 2)
@@ -1065,12 +1140,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, carry)
-            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
 
     def i_rrx(self, op):
+        dsize = op.opers[0].tsize
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
             imm5 = self.getOperValue(op, 2)
@@ -1087,10 +1163,10 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         Sflag = op.iflags & IF_PSR_S
         if Sflag:
-            self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
+            self.setFlag(PSR_N_bit, e_bits.is_signed(val, dsize))
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, carry)
-            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, 4))
+            #self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
 
 
     def i_cbz(self, op):
@@ -1179,6 +1255,8 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
 
 
+    def i_cps(self, op):
+        print("CPS: 0x%x  %r" % (op.va, op))
 
     def i_pld2(self, op):
         print("FIXME: 0x%x: %s - in emu" % (op.va, op))

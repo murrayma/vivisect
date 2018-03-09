@@ -746,7 +746,7 @@ def p_dp_imm(opval, va):
         )
 
     if sflag > 0:
-        iflags |= DP_PSR_S[ocode]
+        iflags = DP_PSR_S[ocode]
     else:
         iflags = 0
 
@@ -1540,11 +1540,11 @@ def p_vmov_scalar(opval, va):
     if op:
         opers = (
             ArmRegOper(rt, va),
-            ArmRegScalarOper(rctx.getRegisterIndex('d%d' % vm), index),
+            ArmRegScalarOper(rctx.getRegisterIndex('d%d' % vd), index),
             )
     else:
         opers = (
-            ArmRegScalarOper(rctx.getRegisterIndex('d%d' % vm), index),
+            ArmRegScalarOper(rctx.getRegisterIndex('d%d' % vd), index),
             ArmRegOper(rt, va),
             )
 
@@ -1569,7 +1569,7 @@ def p_vstm(opval, va):      #p1078
 
     opers = (
             ArmRegOper(rn, va, oflags=oflags),
-            ArmExtRegListOper(vn, regsize, op),
+            ArmExtRegListOper(vd, regsize, op),
             )
 
     return opcode, mnem, opers, flags, simdflags
@@ -3808,7 +3808,7 @@ class ArmOpcode(envi.Opcode):
             if self.iflags & envi.IF_CALL:
                 flags |= envi.BR_PROC
             ret.append((operval, flags))
-            print "getBranches: (0x%x) add  0x%x   %x"% (self.va, operval, flags)
+            #print "getBranches: (0x%x) add  0x%x   %x"% (self.va, operval, flags)
 
         return ret
 
@@ -4151,7 +4151,8 @@ class ArmImmOper(ArmOperand):
 
     def render(self, mcanv, op, idx):
         val = self.getOperValue(op)
-        mcanv.addNameText('#0x%.2x' % (val))
+        mcanv.addText('#')
+        mcanv.addNameText('0x%.2x' % (val))
 
     def repr(self, op):
         val = self.getOperValue(op)
@@ -4275,7 +4276,7 @@ class ArmScaledOffsetOper(ArmOperand):
         # p = indexed
         # u = add
 
-        if (self.pubwl & 0x2):  # write-back
+        if (self.pubwl & 0x2 or not self.pubwl & 0x10):  # write-back if (P==0 || W==1)
             if (emu != None) and (emu.getMeta('forrealz', False)): emu.setRegister( self.base_reg, addr)
 
         if (self.pubwl & 0x10 == 0): # not indexed
@@ -4386,7 +4387,7 @@ class ArmRegOffsetOper(ArmOperand):
 
         addr = base + (pom*rm) & e_bits.u_maxes[self.psize]
 
-        if (self.pubwl & 0x2):  # write-back
+        if (self.pubwl & 0x2 or not self.pubwl & 0x10):  # write-back if (P==0 || W==1)
             if (emu != None) and (emu.getMeta('forrealz', False)): emu.setRegister( self.base_reg, addr)
 
         if (self.pubwl & 0x10 == 0): # not indexed
@@ -4505,7 +4506,7 @@ class ArmImmOffsetOper(ArmOperand):
             addr = (base - self.offset) & e_bits.u_maxes[self.psize]
 
 
-        if (self.pubwl & 0x2):  # write-back
+        if (self.pubwl & 0x2 or not self.pubwl & 0x10):  # write-back if (P==0 || W==1)
             if (emu != None) and (emu.getMeta('forrealz', False)): emu.setRegister( self.base_reg, addr)
 
         if (self.pubwl & 0x10 == 0): # not indexed
@@ -4547,17 +4548,17 @@ class ArmImmOffsetOper(ArmOperand):
             mcanv.addNameText(basereg, typename='registers')
             if self.offset == 0:
                 mcanv.addText(']')
+
             else:
                 if (idxing&0x10) == 0:
-                    mcanv.addText('] ')
-                else:
-                    mcanv.addText(', ')
+                    mcanv.addText(']')
 
-                mcanv.addNameText('#%s0x%x' % (pom,self.offset))
+                mcanv.addText(', #%s' % (pom))
+                mcanv.addNameText('0x%x' % (self.offset))
 
                 if idxing == 0x10:
                     mcanv.addText(']')
-                elif idxing != 0:
+                elif idxing &0x10 != 0:
                     mcanv.addText(']!')
 
     def repr(self, op):
@@ -4567,10 +4568,7 @@ class ArmImmOffsetOper(ArmOperand):
         if self.base_reg == REG_PC:
             addr = self.getOperAddr(op)    # only works without an emulator because we've already verified base_reg is PC
             tname = "[#0x%x]" % addr
-            # FIXME: is there any chance of us doing indexing on PC?!?
-            # ldcl literal trips this in some cases
-            #if idxing != 0x2:
-                #print "OMJ! WRITING to the program counter!"
+
         else:
             pom = ('-','')[u]
             if self.offset != 0:
@@ -4620,11 +4618,12 @@ class ArmPcOffsetOper(ArmOperand):
 
     def render(self, mcanv, op, idx):
         value = self.getOperValue(op)
-        if mcanv.mem.isValidPointer(value):
-            name = addrToName(mcanv, value)
-            mcanv.addVaText(name, value)
+        va = value & -2
+        if mcanv.mem.isValidPointer(va):
+            name = addrToName(mcanv, va)
+            mcanv.addVaText(name, va)
         else:
-            mcanv.addVaText('0x%.8x' % value, value)
+            mcanv.addVaText('0x%.8x' % va, va)
 
     def repr(self, op):
         targ = self.getOperValue(op)

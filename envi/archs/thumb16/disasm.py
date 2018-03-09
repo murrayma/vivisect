@@ -113,7 +113,7 @@ def rd_pc_imm8(va, value):  # add
 
 def rt_pc_imm8(va, value): # ldr
     rt = shmaskval(value, 8, 0x7)
-    imm = e_bits.signed((value & 0xff), 1) << 2
+    imm = e_bits.unsigned((value & 0xff), 1) << 2
     oper0 = ArmRegOper(rt, va=va)
     oper1 = ArmImmOffsetOper(REG_PC, imm, (va&0xfffffffc))
     return COND_AL,(oper0,oper1), None
@@ -437,7 +437,7 @@ def branch_misc(va, val, val2): # bl and misc control
             bytez=struct.pack("<H", val)+struct.pack("<H", val2), va=va-4)
 
     elif op1 & 0b100:
-        # bl/lx
+        # bl/blx
         notx = (val2>>12) & 1
         s = (val>>10) & 1
         mnem = ('blx','bl')[notx]
@@ -450,11 +450,18 @@ def branch_misc(va, val, val2): # bl and misc control
 
         imm = (s<<24) | (j1<<23) | (j2<<22) | ((val&0x3ff) << 12) | ((val2&0x7ff) << 1)
 
-        #sign extend a 23-bit number
+        #sign extend a 25-bit number
         if s:
             imm |= 0xff000000
 
-        oper0 = ArmPcOffsetOper(e_bits.signed(imm,4), va=va&0xfffffffc)
+        vamask = (
+                0xfffffffc,
+                0xfffffffe
+                )
+
+        va &= vamask[notx]
+
+        oper0 = ArmPcOffsetOper(e_bits.signed(imm,4), va=va)
 
         return COND_AL, opcode, mnem, (oper0, ), flags, 0
         
@@ -523,8 +530,9 @@ def imm5_rm_rd(va, value):
     stype = value >> 11
 
     oper0 = ArmRegOper(rd, va)
-    oper1 = ArmRegShiftImmOper(rm, stype, imm5, va)
-    return COND_AL,(oper0, oper1,), None
+    oper1 = ArmRegOper(rm, va)
+    oper2 = ArmImmOper(imm5)
+    return COND_AL,(oper0, oper1, oper2), None
 
 
 def i_imm5_rn(va, value):
@@ -719,7 +727,7 @@ def ThumbExpandImm_C(imm4, imm8, carry):
 dp_secondary = (
             'tst',# and
             None, # bic
-            None, # orr
+            'mov', # orr
             'mvn', # orn
             'teq', # eor
             None, #
@@ -734,6 +742,13 @@ dp_secondary = (
             None,
             None,
             )
+
+dp_sec_silS = (0,4,8,13)
+# IF_PSR_S_SIL is silent s for tst, teq, cmp cmn
+DP_SEC_PSR_S = [IF_PSR_S for x in range(17)]
+for x in dp_sec_silS:
+    DP_SEC_PSR_S[x] |= IF_PSR_S_SIL 
+
 def dp_mod_imm_32(va, val1, val2):
     if val2 & 0x8000:
         return branch_misc(va, val1,val2)
@@ -747,24 +762,37 @@ def dp_mod_imm_32(va, val1, val2):
     i = (val1 >> 10) & 1
     imm3 = (val2 >> 12) & 0x7
     imm4 = imm3 | (i<<3)
-    const = val2 & 0xff
+    const = (val2 & 0xff)
 
-    if S:
-        flags |= IF_PSR_S
+    dpop = (val1>>5) & 0xf
 
     const,carry = ThumbExpandImm_C(imm4, const, 0)
     
     if Rd==15 and S:
         #raise Exception("dp_mod_imm_32 - FIXME: secondary dp encoding")
-        dpop = (val1>>5) & 0xf
         mnem = dp_secondary[dpop]
         if mnem == None:
             raise Exception("dp_mod_imm_32: Rd==15, S, but dpop doesn't have a secondary! va:%x, %x%x" % (va, val1, val2))
 
+        if S:
+            flags |= DP_SEC_PSR_S[dpop]
         oper1 = ArmRegOper(Rn)
         oper2 = ArmImmOper(const)
         opers = (oper1, oper2)
         return COND_AL, None, mnem, opers, flags, 0
+
+    elif Rn == 15 and (val1 & 0xfbc0 == 0xf040):
+        dpop = (val1>>5) & 0xf
+        mnem = dp_secondary[dpop]
+        if S:
+            flags |= DP_SEC_PSR_S[dpop]
+        oper1 = ArmRegOper(Rd)
+        oper2 = ArmImmOper(const)
+        opers = (oper1, oper2)
+        return COND_AL, None, mnem, opers, flags, 0
+
+    if S:
+        flags |= IF_PSR_S
 
     oper0 = ArmRegOper(Rd)
     oper1 = ArmRegOper(Rn)
@@ -795,13 +823,14 @@ def shift_or_ext_32(va, val1, val2):
         raise InvalidInstruction(mesg="shift_or_ext_32 needs to hand off for val2 & 0xf000 != 0xf000 at va 0x%x: val1:%.4x val2:%.4x" % (va, val1, val2), va=va)
 
 
+    op1 = (val>>4) & 0xf
     op2 = (val2>>4) & 0xf
     rn = (val1 & 0xf)
     rd = (val2 >> 8) & 0xf
     rm = (val2 & 0xf)
 
     if (op2):
-        if op1 > 6:
+        if op1 > 5:
             raise InvalidInstruction(
                     mesg="shift_or_ext_32 parsing an unsupported instruction encoding",
                     bytez=struct.pack("<H", val1)+struct.pack("<H", val2), va=va)
@@ -1041,8 +1070,8 @@ def ldrb_memhints_32(va, val1, val2):
                     ArmImmOffsetOper(rn, imm12, va),
                     )
 
-        elif not op1 and not op2:
-            if rt == 0xf:
+        elif not op1:
+            if not op2 and rt == 0xf:
                 # pld/pldw (p526)
                 opcode, mnem, flags = memh_instrs[Sbit]
                 rm = val2 & 0xf
@@ -1051,19 +1080,30 @@ def ldrb_memhints_32(va, val1, val2):
                         ArmScaledOffsetOper(rn, rm, S_LSL, imm2, va),
                         )
 
-            else:
+            elif (val2>>11) & 1:
                 # LDRB (register)
                 opcode, mnem, flags = ldrb_instrs[Sbit]
-                rm = val2 & 0xf
-                imm2 = (val2>>4) & 3
+                imm8 = val2 & 0xff
+                pubwl = ((val2 >> 6) & 0x18) | ((val2 >> 7) & 2)
                 opers = (
                         ArmRegOper(rt),
-                        ArmScaledOffsetOper(rn, rm, S_LSL, imm2, va),
+                        ArmImmOffsetOper(rn, imm8, va, pubwl)
                         )
 
+
         else:
-            raise envi.InvalidInstruction(
-                    mesg="ldrb_memhints_32: fall 1", va=va)
+            # LDRB (register)
+            opcode, mnem, flags = ldrb_instrs[Sbit]
+            rm = val2 & 0xf
+            imm2 = (val2>>4) & 3
+            opers = (
+                    ArmRegOper(rt),
+                    ArmScaledOffsetOper(rn, rm, S_LSL, imm2, va),
+                    )
+
+        #else:
+        #    raise envi.InvalidInstruction(
+        #            mesg="ldrb_memhints_32: fall 1", va=va)
 
 
     return COND_AL, opcode, mnem, opers, flags, 0
@@ -1463,7 +1503,7 @@ def coproc_simd_32(va, val1, val2):
             load =      (val1>>4) & 1
             two =       (val1>>11) & 2
             opc1 =      (val1>>5) & 0x7
-            CRn =       val2 & 0xf
+            CRn =       val1 & 0xf
             Rd =        (val2>>12) & 0xf
             opc2 =      (val2>>5) & 0x7
             CRm =       val2 & 0xf
@@ -1664,32 +1704,32 @@ bcc_ops = {
 
 # FIXME: thumb and arm opcode numbers don't line up. - FIX
 thumb_base = [
-    ('00000',       ( INS_LSL,'lsl',     imm5_rm_rd, 0)), # LSL<c> <Rd>,<Rm>,#<imm5>
-    ('00001',       ( INS_LSR,'lsr',     imm5_rm_rd, 0)), # LSR<c> <Rd>,<Rm>,#<imm>
-    ('00010',       ( INS_ASR,'asr',     imm5_rm_rd, 0)), # ASR<c> <Rd>,<Rm>,#<imm>
-    ('0001100',     ( INS_ADD,'add',     rm_rn_rd,   0)), # ADD<c> <Rd>,<Rn>,<Rm>
-    ('0001101',     ( INS_SUB,'sub',     rm_rn_rd,   0)), # SUB<c> <Rd>,<Rn>,<Rm>
-    ('0001110',     ( INS_ADD,'add',     imm3_rn_rd, 0)), # ADD<c> <Rd>,<Rn>,#<imm3>
-    ('0001111',     ( INS_SUB,'sub',     imm3_rn_rd, 0)), # SUB<c> <Rd>,<Rn>,#<imm3>
-    ('00100',       ( INS_MOV,'mov',     imm8_rd,    0)), # MOV<c> <Rd>,#<imm8>
+    ('00000',       ( INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
+    ('00001',       ( INS_LSR,'lsr',     imm5_rm_rd, IF_PSR_S)), # LSR<c> <Rd>,<Rm>,#<imm>
+    ('00010',       ( INS_ASR,'asr',     imm5_rm_rd, IF_PSR_S)), # ASR<c> <Rd>,<Rm>,#<imm>
+    ('0001100',     ( INS_ADD,'add',     rm_rn_rd,   IF_PSR_S)), # ADD<c> <Rd>,<Rn>,<Rm>
+    ('0001101',     ( INS_SUB,'sub',     rm_rn_rd,   IF_PSR_S)), # SUB<c> <Rd>,<Rn>,<Rm>
+    ('0001110',     ( INS_ADD,'add',     imm3_rn_rd, IF_PSR_S)), # ADD<c> <Rd>,<Rn>,#<imm3>
+    ('0001111',     ( INS_SUB,'sub',     imm3_rn_rd, IF_PSR_S)), # SUB<c> <Rd>,<Rn>,#<imm3>
+    ('00100',       ( INS_MOV,'mov',     imm8_rd,    IF_PSR_S)), # MOV<c> <Rd>,#<imm8>
     ('00101',       ( INS_CMP,'cmp',     imm8_rd,    0)), # CMP<c> <Rn>,#<imm8>
-    ('00110',       ( INS_ADD,'add',     imm8_rd,    0)), # ADD<c> <Rdn>,#<imm8>
-    ('00111',       (INS_SUB,'sub',     imm8_rd,    0)), # SUB<c> <Rdn>,#<imm8>
+    ('00110',       ( INS_ADD,'add',     imm8_rd,    IF_PSR_S)), # ADD<c> <Rdn>,#<imm8>
+    ('00111',       (INS_SUB,'sub',     imm8_rd,    IF_PSR_S)), # SUB<c> <Rdn>,#<imm8>
     # Data processing instructions
-    ('0100000000',  (INS_AND,'and',     rm_rdn,     0)), # AND<c> <Rdn>,<Rm>
-    ('0100000001',  (INS_EOR,'eor',     rm_rdn,     0)), # EOR<c> <Rdn>,<Rm>
-    ('0100000010',  (INS_LSL,'lsl',     rm_rdn,     0)), # LSL<c> <Rdn>,<Rm>
-    ('0100000011',  (INS_LSR,'lsr',     rm_rdn,     0)), # LSR<c> <Rdn>,<Rm>
-    ('0100000100',  (INS_ASR,'asr',     rm_rdn,     0)), # ASR<c> <Rdn>,<Rm>
-    ('0100000101',  (INS_ADC,'adc',     rm_rdn,     0)), # ADC<c> <Rdn>,<Rm>
-    ('0100000110',  (INS_SBC,'sbc',     rm_rdn,     0)), # SBC<c> <Rdn>,<Rm>
-    ('0100000111',  (INS_ROR,'ror',     rm_rdn,     0)), # ROR<c> <Rdn>,<Rm>
+    ('0100000000',  (INS_AND,'and',     rm_rdn,     IF_PSR_S)), # AND<c> <Rdn>,<Rm>
+    ('0100000001',  (INS_EOR,'eor',     rm_rdn,     IF_PSR_S)), # EOR<c> <Rdn>,<Rm>
+    ('0100000010',  (INS_LSL,'lsl',     rm_rdn,     IF_PSR_S)), # LSL<c> <Rdn>,<Rm>
+    ('0100000011',  (INS_LSR,'lsr',     rm_rdn,     IF_PSR_S)), # LSR<c> <Rdn>,<Rm>
+    ('0100000100',  (INS_ASR,'asr',     rm_rdn,     IF_PSR_S)), # ASR<c> <Rdn>,<Rm>
+    ('0100000101',  (INS_ADC,'adc',     rm_rdn,     IF_PSR_S)), # ADC<c> <Rdn>,<Rm>
+    ('0100000110',  (INS_SBC,'sbc',     rm_rdn,     IF_PSR_S)), # SBC<c> <Rdn>,<Rm>
+    ('0100000111',  (INS_ROR,'ror',     rm_rdn,     IF_PSR_S)), # ROR<c> <Rdn>,<Rm>
     ('0100001000',  (INS_TST,'tst',     rm_rd,      0)), # TST<c> <Rn>,<Rm>
-    ('0100001001',  (INS_RSB,'rsb',     rm_rd_imm0, 0)), # RSB<c> <Rd>,<Rn>,#0
+    ('0100001001',  (INS_RSB,'rsb',     rm_rd_imm0, IF_PSR_S)), # RSB<c> <Rd>,<Rn>,#0
     ('0100001010',  (INS_CMP,'cmp',     rm_rd,      0)), # CMP<c> <Rn>,<Rm>
     ('0100001011',  (INS_CMN,'cmn',     rm_rd,      0)), # CMN<c> <Rn>,<Rm>
-    ('0100001100',  (INS_ORR,'orr',     rm_rdn,     0)), # ORR<c> <Rdn>,<Rm>
-    ('0100001101',  (INS_MUL,'mul',     rn_rdm,     0)), # MUL<c> <Rdm>,<Rn>,<Rdm>
+    ('0100001100',  (INS_ORR,'orr',     rm_rdn,     IF_PSR_S)), # ORR<c> <Rdn>,<Rm>
+    ('0100001101',  (INS_MUL,'mul',     rn_rdm,     IF_PSR_S)), # MUL<c> <Rdm>,<Rn>,<Rdm>
     ('0100001110',  (INS_BIC,'bic',     rm_rdn,     0)), # BIC<c> <Rdn>,<Rm>
     ('0100001111',  (INS_MVN,'mvn',     rm_rd,      0)), # MVN<c> <Rd>,<Rm>
     # Special data in2tructions and branch and exchange
@@ -1862,13 +1902,13 @@ thumb2_extension = [
     ('11101011110',         (85,'rsb',      dp_shift_32,        IF_THUMB32)),
 
     # coproc, adv simd, fp-instrs #ed9f 5a31
-    ('11101100',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),   # FIXME: not fully implemented
-    ('11101101',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),   # FIXME: not fully implemented
-    ('11101110',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),   # FIXME: not fully implemented
-    ('11101111',            (85,'adv simd', adv_simd_32,        IF_THUMB32)),   # FIXME: not fully implemented
-    ('1111110',             (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),   # FIXME: not fully implemented
-    ('11111110',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),   # FIXME: not fully implemented
-    ('11111111',            (85,'adv simd', adv_simd_32,        IF_THUMB32)),   # FIXME: not fully implemented
+    ('11101100',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),
+    ('11101101',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),
+    ('11101110',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),
+    ('11101111',            (85,'adv simd', adv_simd_32,        IF_THUMB32)),
+    ('1111110',             (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),
+    ('11111110',            (85,'coproc simd', coproc_simd_32,  IF_THUMB32)),
+    ('11111111',            (85,'adv simd', adv_simd_32,        IF_THUMB32)),
 
     # data-processing (modified immediate)
     ('11110000000',         (85,'and',      dp_mod_imm_32,      IF_THUMB32)),  # tst if rd=1111 and s=1
@@ -1915,21 +1955,22 @@ thumb2_extension = [
     ('11110111101',         (85,'usat',     dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
     ('11110111110',         (85,'ubfx',     ubfx_32,      IF_THUMB32)),
     ('11110111111',         (85,'branchmisc', branch_misc,      IF_THUMB32)),
+    ('111110000000',        (INS_STR, 'str', ldr_puw_32,        IF_B | IF_THUMB32)),
     ('111110000001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
     ('111110000010',        (INS_STR,  'str',  ldr_puw_32,      IF_H | IF_THUMB32)),
     ('111110000011',        (INS_LDR,  'ldr',  ldr_puw_32,      IF_H | IF_THUMB32)),
     ('111110000100',        (INS_STR,  'str',  ldr_puw_32,      IF_THUMB32)),   # T4 encoding
     ('111110000101',        (INS_LDR,  'ldr',  ldr_puw_32,      IF_THUMB32)),   # T4 encoding
-    ('111110001001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
-    ('111110010001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
-    ('111110011001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
     #('111110001001',        (INS_LDRB, 'ldrb', ldr_32,          IF_THUMB32)),
+    ('111110001001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
     ('111110001010',        (INS_STR, 'str', ldr_32,            IF_H | IF_THUMB32)),
     ('111110001011',        (INS_LDR, 'ldr', ldr_32,            IF_H | IF_THUMB32)),
-    ('111110001100',        (INS_STR,  'str',  ldr_puw_32,      IF_THUMB32)),
+    ('111110001100',        (INS_STR,  'str',  ldr_32,      IF_THUMB32)),
     ('111110001101',        (INS_LDR,  'ldr',  ldr_32,          IF_THUMB32)), # T3
     ('111110001000',        (INS_STR, 'str', ldr_32,            IF_B | IF_THUMB32)),
-    ('111110000000',        (INS_STR, 'str', ldr_puw_32,        IF_B | IF_THUMB32)),
+    ('111110010001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
+    ('111110011001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
+
     # data-processing (register)
     ('111110100',           (None, 'shift_or_extend', shift_or_ext_32,   IF_THUMB32)),
     #('111110101',           (None, 'parallel_misc', parallel_misc_32,   IF_THUMB32)),
