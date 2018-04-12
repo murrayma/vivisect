@@ -399,7 +399,12 @@ class VQVivFuncgraphView(vq_hotkey.HotKeyMixin, e_qt_memory.EnviNavMixin, QtWidg
         self.fva = fva
         #self.graph = self.vw.getFunctionGraph(fva)
         if graph == None:
-            graph = viv_graphutil.buildFunctionGraph(self.vw, fva, revloop=True)
+            try:
+                graph = viv_graphutil.buildFunctionGraph(self.vw, fva, revloop=True)
+            except Exception, e:
+                import sys
+                sys.excepthook(*sys.exc_info())
+                return
 
         self.graph = graph
 
