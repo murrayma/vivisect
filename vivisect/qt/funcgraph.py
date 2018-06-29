@@ -103,6 +103,10 @@ class VQVivFuncgraphCanvas(vq_memory.VivCanvasBase):
         self.viewmenu.addAction("Paint Down", ACT(self.paintDown.emit))
         self.viewmenu.addAction("Paint Down until remerge", ACT(self.paintMerge.emit))
 
+        viewmenu = menu.addMenu('view   ')
+        viewmenu.addAction("Save frame to HTML", ACT(self._menuSaveToHtml))
+        viewmenu.addAction("Refresh", ACT(self.refresh))
+
         menu.exec_(event.globalPos())
 
     def _navExpression(self, expr):

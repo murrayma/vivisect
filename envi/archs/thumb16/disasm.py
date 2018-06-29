@@ -277,7 +277,7 @@ def branch_misc(va, val, val2): # bl and misc control
                     return COND_AL, None, 'sub', opers, IF_PSR_S, 0
 
                 return COND_AL, None, 'eret', tuple(), envi.IF_RET | envi.IF_NOFALL, 0
-            print "TEST ME: branch_misc subsection 3"
+            print("TEST ME: branch_misc subsection 3")
 ##### FIXME!  THIS NEEDS TO ALSO HIT MSR BELOW....
             #raise InvalidInstruction(
             #    mesg="branch_misc subsection 3",
@@ -285,7 +285,6 @@ def branch_misc(va, val, val2): # bl and misc control
 
             # xx0xxxxx and others
             if op == 0b0111000:
-                print "HIT"
                 tmp = op2 & 3
 
                 Rn = val & 0xf
@@ -296,8 +295,8 @@ def branch_misc(va, val, val2): # bl and misc control
 
                 else:
                     R = (val >> 4) & 1
-
                     #raise Exception("FIXME:  MSR(register) p B9-1968")
+
                 opers = (
                         ArmPgmStatRegOper(R, mask),
                         ArmRegOper(Rn)
@@ -308,6 +307,7 @@ def branch_misc(va, val, val2): # bl and misc control
             elif op == 0b0111001:
                 # coalesce with previous
                 raise Exception("FIXME:  MSR(register) p B9-1968")
+
 
             elif op == 0b0111010:
                 flags = 0
@@ -559,56 +559,75 @@ def itblock(va, val):
     firstcond = (val>>4) & 0xf
     return COND_AL,(ThumbITOper(mask, firstcond),), None
 
+
+
+it_strs_0 = ['']
+it_strs_1 = ['e', 't']
+it_strs_2 = ['ee','et','te','tt']
+it_strs_3 = ['eee','tee','ete','tte','eet','tet','ett','ttt']
+it_strs = (it_strs_0, it_strs_1, it_strs_2, it_strs_3)
+
 class ThumbITOper(ArmOperand):
     def __init__(self, mask, firstcond):
         self.mask = mask
         self.firstcond = firstcond
 
-    def repr(self, op):
+    def getCondInstrCount(self):
+        mask = self.mask
+        for x in range(4, 0, -1):
+            if mask & 1:
+                break
+            mask >>= 1
+        return x - 1
+
+    def getFlags(self):
+        fiz = self.firstcond & 1
+        flags = 1
+        count = self.getCondInstrCount()
+        print bin(fiz), bin(self.mask)
+        for x in range(count):
+            bit = bool(((self.mask>>(3-x))&1) == fiz)
+            print x, bit, bin(flags)
+            flags |= (bit << (x+1))
+
+        return flags
+
+    def getCondData(self):
         mask = self.mask
         cond = self.firstcond
-
-        fcond = cond_codes.get(cond)
-
-        itbytes = []
-
+        count = 0
         go = 0
         cond0 = cond & 1
+        data = 0
+
         for idx in range(4):
             mbit = (mask>>idx) & 1
             if go:
-                if mbit == cond0:
-                    itbytes.append('t')
-                else:
-                    itbytes.append('e')
+                bit = bool(mbit == cond0)
+                data <<= 1
+                data |= bit
+                count += 1
 
             if mbit: 
                 go = 1
-        nextfew = ''.join(itbytes)
+
+        return count, self.firstcond, data
+
+    def repr(self, op):
+        mask = self.mask
+
+        count, cond, data = self.getCondData()
+
+        fcond = cond_codes.get(cond)
+        nextfew = it_strs[count][data]
         return "%s %s" % (nextfew, fcond)
 
     def render(self, mcanv, op, idx):
         mask = self.mask
-        cond = self.firstcond
+
+        count, cond, data = self.getCondData()
 
         fcond = cond_codes.get(cond)
-
-        itbytes = []
-
-        go = 0
-        cond0 = cond & 1
-        for idx in range(4):
-            mbit = (mask>>idx) & 1
-            if go:
-                if mbit == cond0:
-                    itbytes.append('t')
-                else:
-                    itbytes.append('e')
-
-            if mbit: 
-                go = 1
-
-        nextfew = ''.join(itbytes)
         mcanv.addText("%s %s" % (nextfew, fcond))
 
     def getOperValue(self, idx, emu=None):
@@ -941,6 +960,54 @@ def dp_bin_imm_32(va, val1, val2):  # p232
     opers.insert(1, oper1)
 
     return COND_AL, None, None, opers, flags, 0
+
+def dp_bfi_imm_32(va, val1, val2):  # p232
+    flags = IF_THUMB32
+    if val2 & 0x8000:
+        return branch_misc(va, val1,val2)
+
+    Rd = (val2 >> 8) & 0xf
+
+    imm4 = val1 & 0xf
+    i = (val1 >> 10) & 1
+    imm3 = (val2 >> 12) & 0x7
+    const = val2 & 0xff
+
+    op = (val1>>4) & 0x1f
+    const |= (imm4 << 12) | (i << 11) | (imm3 << 8)
+
+    oper0 = ArmRegOper(Rd)
+    oper2 = ArmImmOper(const)
+
+    if op in (0b00100, 0b01100):    # movw, movt
+        return COND_AL, None, None, (oper0, oper2), 0, 0
+
+    Rn = val1 & 0xf
+    if Rn==15:
+        if op in (0,0b1010):   # add/sub
+            # adr
+            return COND_AL, None, 'adr', (oper0, oper2), None, 0
+
+    oper1 = ArmRegOper(Rn)
+
+    if op == 0b10110:
+        imm2 = (val2>>6) & 0x3
+        msb = val2 & 0x1f
+        lsb = (imm3<<2) | imm2
+        width = msb - lsb + 1
+
+        if Rn == 15:
+            # bfc
+            mnem = 'bfc'
+            opers = (oper0, ArmImmOper(lsb), ArmImmOper(width))
+        else:
+            # bfi
+            mnem = 'bfi'
+            opers = (oper0, oper1, ArmImmOper(lsb), ArmImmOper(width))
+
+        return COND_AL, None, mnem, opers, None, 0
+
+    return COND_AL, None, None, (oper0, oper1, oper2), flags, 0
 
 
 def ldm_reg_mode_32(va, val1, val2):
@@ -1944,7 +2011,7 @@ thumb2_extension = [
     ('11110011000',         (85,'ssat',     dp_bin_imm_32,      IF_THUMB32)),
     ('11110011001',         (85,'ssat16',   dp_bin_imm_32,      IF_THUMB32)),
     ('11110011010',         (85,'sbfx',     dp_bin_imm_32,      IF_THUMB32)),
-    ('11110011011',         (85,'bfi',      dp_bin_imm_32,      IF_THUMB32)),  # bfc if rn=1111
+    ('11110011011',         (85,'bfi',      dp_bfi_imm_32,      IF_THUMB32)),  # bfc if rn=1111
     ('11110011100',         (85,'usat',     dp_bin_imm_32,      IF_THUMB32)),
     ('111100111010',        (85,'usat',     dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
     ('111100111011',        (85,'usat',     dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
@@ -1956,7 +2023,7 @@ thumb2_extension = [
     ('11110111000',         (85,'ssat',     dp_bin_imm_32,      IF_THUMB32)),
     ('11110111001',         (85,'ssat16',   dp_bin_imm_32,      IF_THUMB32)),
     ('11110111010',         (85,'sbfx',     dp_bin_imm_32,      IF_THUMB32)),
-    ('11110111011',         (85,'bfi',      dp_bin_imm_32,      IF_THUMB32)),  # bfc if rn=1111
+    ('11110111011',         (85,'bfi',      dp_bfi_imm_32,      IF_THUMB32)),  # bfc if rn=1111
     ('11110111100',         (85,'usat',     dp_bin_imm_32,      IF_THUMB32)),
     ('11110111101',         (85,'usat',     dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
     ('11110111110',         (85,'ubfx',     ubfx_32,      IF_THUMB32)),
