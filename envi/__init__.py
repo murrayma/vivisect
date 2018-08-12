@@ -17,6 +17,8 @@ ARCH_THUMB16     = 4 << 16
 ARCH_THUMB       = 5 << 16
 ARCH_MSP430      = 6 << 16
 ARCH_H8          = 7 << 16
+ARCH_PPC         = 8 << 16
+ARCH_VLE         = 9 << 16
 ARCH_MASK        = 0xffff0000   # Masked into IF_FOO and BR_FOO values
 
 arch_names = {
@@ -28,6 +30,8 @@ arch_names = {
     ARCH_THUMB:     'thumb2',
     ARCH_MSP430:    'msp430',
     ARCH_H8:        'h8',
+    ARCH_PPC:       'ppc',
+    ARCH_VLE:       'vle',
 }
 
 arch_by_name = {
@@ -41,6 +45,8 @@ arch_by_name = {
     'thumb2':   ARCH_THUMB,
     'msp430':   ARCH_MSP430,
     'h8':       ARCH_H8,
+    'ppc':      ARCH_PPC,
+    'vle':      ARCH_VLE,
 }
 
 # Instruction flags (The first 8 bits are reserved for arch independant use)
@@ -1338,6 +1344,14 @@ def getArchModule(name=None):
         import envi.archs.h8 as e_h8
         return e_h8.H8Module()
 
+    elif name in ( 'ppc', 'ppcvle' ):
+        import envi.archs.ppc as e_ppc
+        return e_ppc.PpcModule()
+
+    elif name in ( 'vle', ):
+        import envi.archs.ppc as e_ppc
+        return e_ppc.VleModule()
+
     else:
         raise ArchNotImplemented(name)
 
@@ -1348,6 +1362,7 @@ def getArchModules(default=ARCH_DEFAULT):
     '''
     import envi.archs.h8 as e_h8
     import envi.archs.arm as e_arm
+    import envi.archs.ppc as e_ppc
     import envi.archs.i386 as e_i386
     import envi.archs.amd64 as e_amd64
     import envi.archs.thumb16 as e_thumb16
@@ -1363,6 +1378,8 @@ def getArchModules(default=ARCH_DEFAULT):
     archs.append( e_thumb16.ThumbModule() )
     archs.append( e_msp430.Msp430Module() )
     archs.append( e_h8.H8Module() )
+    archs.append( e_ppc.PpcModule() )
+    archs.append( e_ppc.VleModule() )
 
     # Set the default module ( or None )
     archs[ ARCH_DEFAULT ] = archs[ default >> 16 ]
