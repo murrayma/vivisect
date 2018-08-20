@@ -28,7 +28,7 @@ class ArmModule(envi.ArchitectureModule):
         return
 
     def archGetNopInstr(self):
-        return '\x00'
+        return ('\x00\x00\x60\xe3', '\xe3\x60\x00\x00')[self._endian]   #FIXME: this is only ARM mode.  this arch mod should cover both.  the ENVI architecture doesn't support this model yet.
 
     def archGetBadOps(self):
         oplist = [ self.archParseOpcode(badop,0,0) for badop in self._arch_badopbytes ]
@@ -71,6 +71,17 @@ class ArmModule(envi.ArchitectureModule):
             return tova & -2, reftype, rflags
         return tova, reftype, rflags
 
+    def archGetRegisterGroups(self):
+        groups = envi.ArchitectureModule.archGetRegisterGroups(self)
+
+        groups.append(('general', arm_regs))
+
+        # compilers use the following regs to stick the module baseaddr in for 
+        # switchcase code
+        #switch_mapbase = ('switch_mapbase', [ 'edi', 'esi' ],)
+        #groups.append(switch_mapbase)
+        return groups
+
 
 class ThumbModule(envi.ArchitectureModule):
     '''
@@ -94,7 +105,7 @@ class ThumbModule(envi.ArchitectureModule):
         return
 
     def archGetNopInstr(self):
-        return '\x00'
+        return ('\xc0\x46', '\x46\xc0')[self._endian]
  
     def archGetBadOps(self):
         oplist = [ self.archParseOpcode(badop,0,0) for badop in self._arch_badopbytes ]

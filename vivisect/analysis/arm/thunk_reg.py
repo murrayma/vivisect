@@ -86,7 +86,7 @@ def analyzeFunction(vw, fva, prepend=False):
         op = vw.parseOpcode(tva)
         emu.executeOpcode(op)
 
-        if op.iflags & envi.IF_NOFALL:
+        if op.iflags & (envi.IF_BRANCH | envi.IF_COND) == (envi.IF_BRANCH | envi.IF_COND):
             break
 
         if not len(op.opers):
@@ -121,7 +121,7 @@ def analyzeFunction(vw, fva, prepend=False):
     try:
         emu.runFunction(fva, maxhit=1)
     except:
-        vprint("Error emulating function 0x%x\n\t%s" % (fva, repr(emumon.emuanom)))
+        vw.vprint("Error emulating function 0x%x\n\t%s" % (fva, repr(emumon.emuanom)))
 
     if vw.verbose: sys.stderr.write('=')
 
@@ -134,7 +134,7 @@ def analyzeFunction(vw, fva, prepend=False):
             try:
                 vw.followPointer(tgt)
             except envi.SegmentationViolation:
-                vprint("SegV: %x (va:0x%x)" % (tgt,va))
+                if vw.verbose: vw.vprint("SegV: %x (va:0x%x)" % (tgt,va))
                 emumon.emuanom.append("SegV: %x (va:0x%x)" % (tgt,va))
                 continue
 
