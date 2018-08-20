@@ -277,8 +277,9 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         if sva == 0:
             continue
         if addbase: sva += baseaddr
-        if sva == 0:
-            continue
+
+        decodedname = decode(s.name)
+        sname = pyfriendlyName(decodedname)
 
         decodedname = decode(s.name)
         sname = pyfriendlyName(decodedname)
@@ -287,6 +288,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             try:
                 vw.addExport(sva, EXP_FUNCTION, sname, fname)
                 vw.addEntryPoint(sva)
+                if decodedname != sname:  vw.setComment(sva, decodedname)
             except Exception, e:
                 vw.vprint('addExport Failure: %s' % e)
 
@@ -294,6 +296,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             if vw.isValidPointer(sva):
                 try:
                     vw.addExport(sva, EXP_DATA, sname, fname)
+                    if decodedname != sname:  vw.setComment(sva, decodedname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
@@ -306,6 +309,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                 try:
                     vw.addExport(sva, EXP_FUNCTION, sname, fname)
                     vw.addEntryPoint(sva)
+                    if decodedname != sname:  vw.setComment(sva, decodedname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
@@ -317,6 +321,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             if vw.isValidPointer(sva):
                 try:
                     vw.addExport(sva, EXP_DATA, sname, fname)
+                    if decodedname != sname:  vw.setComment(sva, decodedname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
@@ -346,11 +351,12 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                     sva = reloc.r_offset
                     break
 
+        origname = sname
         decodedname = decode(sname)
         sname = pyfriendlyName(decodedname)
 
         if addbase: sva += baseaddr
-        vw.setComment(sva, decodedname)
+        if decodedname != sname:  vw.setComment(sva, decodedname)
         if vw.isValidPointer(sva) and len(sname):
             try:
                 vw.makeName(sva, "%s_%x" % (sname,sva), filelocal=True)
