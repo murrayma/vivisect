@@ -391,6 +391,12 @@ class Operand:
         '''
         return False
 
+    def isPC(self):
+        '''
+        If the given operand is the Program Counter, return True.
+        '''
+        return False
+
     def getOperAddr(self, op, emu):
         """
         If the operand is a "dereference" operand, this method should use the
