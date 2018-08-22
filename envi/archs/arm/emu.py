@@ -679,7 +679,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     def i_vmov(self, op):
         if len(op.opers) == 2:
-            if isinstance(ArmImmOper, op.opers[1]):
+            if isinstance(op.opers[1], ArmImmOper):
                 # immediate version copies immediate into each element (Q=2 elements, D=1)
                 print "vmov: immediate"
 
