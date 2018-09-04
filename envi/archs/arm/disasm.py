@@ -1505,14 +1505,15 @@ def p_vmov_scalar(opval, va):
 
     d = (opval >> 3) & 0x10
     vd = ((opval >> 16) & 0xf) | d
+    u = (opval >> 23) & 1
 
     if (opc1 & 2):  # 1xxx
         index = ((opc1 & 1) << 2) | opc2
-        simdflags = IFS_8
+        simdflags = (IFS_S8, IFS_U8)[u]
 
     elif (opc2 & 1):# 0xx1
         index = ((opc1 & 1) << 1) | (opc2 >> 1)
-        simdflags = IFS_16
+        simdflags = (IFS_S16, IFS_U16)[u]
 
     else:           # 0xx0
         index = (opc1 & 1) << 1

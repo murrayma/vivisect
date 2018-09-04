@@ -1872,11 +1872,22 @@ def adv_xfer_arm_ext_32(va, val1, val2):
             if a == 0:
                 # p.A8-944
                 mnem, opcode = 'vmov', INS_VMOV
-                opers = ()
+                rt = val2 >> 12
+                vn = val1 & 0xf
+                Vreg = rctx.getRegisterIndex('s%d' % vn)
+                opers = (
+                        ArmRegOper(Vreg, va),
+                        ArmRegOper(rt, va),
+                        )
             elif a == 7:
                 # p.A8-956
                 mnem, opcode = 'vmsr', INS_VMSR
-                opers = ()
+                fpscr = REG_FPSCR
+                rt = val2 >> 12
+                opers = (
+                        ArmRegOper(fpscr, va),
+                        ArmRegOper(rt, va),
+                        )
             else:
                 bytez = struct.pack("<I", val)
                 raise InvalidInstruction(mesg="INVALID ENCODING: adv_xfer_arm_ext_32: l=0. c=0, a != (0, 7)", bytez=bytez, va=va)
@@ -1885,24 +1896,63 @@ def adv_xfer_arm_ext_32(va, val1, val2):
             if (a & 0b100) == 0:
                 # p.A8-940
                 mnem, opcode = 'vmov', INS_VMOV
-                opers = ()
+                return p_vmov_scalar(val, va)   # from the ARM code....
+
             else:
                 if b & 2:
                     raise InvalidInstruction(mesg="INVALID ENCODING: adv_xfer_arm_ext_32: b & 2", bytez=bytez, va=va)
                 # p.A8-886
                 mnem, opcode = 'vdup', INS_VDUP
-                opers = ()
+                b = (val1 >> 6) & 1
+                q = (val1 >> 5) & 1
+                d = (val2 >> 7) & 1
+                e = (val2 >> 5) & 1
+
+                #regs = (1, 2)[bool(q)]  # not necessary until emu, and not encoding specifically here
+                vd = (d << 4) | (val1 & 0xf)
+                rt = val2 >> 12
+                be = (b<<1) | e
+
+                simdflags = 0
+                if be == 0b00:
+                    simdflags = IFS_32
+                elif be == 0b01:
+                    esize = IFS_16
+                elif be == 0b10:
+                    esize = IFS_8
+                else:
+                    bytez = struct.pack("<I", val)
+                    raise InvalidInstruction(mesg="UNDEFINED ENCODING: adv_xfer_arm_ext_32: vdup: be=3", bytez=bytez, va=va)
+
+                opers = (
+                        ArmRegOper(vd, va),
+                        ArmRegOper(rt, va),
+                        )
 
     else:   # l == 1
         if c == 0:
             if a == 0:
                 # p.A8-944
                 mnem, opcode = 'vmov', INS_VMOV
-                opers = ()
+                rt = val2 >> 12
+                vn = val1 & 0xf
+                Vreg = rctx.getRegisterIndex('s%d' % vn)
+
+                opers = (
+                        ArmRegOper(rt, va),
+                        ArmRegOper(Vreg, va),
+                        )
+
             elif a == 7:
                 # p.A8-954 & B9-2012
                 mnem, opcode = 'vmrs', INS_VMRS
-                opers = ()
+                fpscr = REG_FPSCR
+                rt = val2 >> 12
+                opers = (
+                        ArmRegOper(rt, va),
+                        ArmRegOper(fpscr, va),
+                        )
+
             else:
                 bytez = struct.pack("<I", val)
                 raise InvalidInstruction(mesg="INVALID ENCODING: adv_xfer_arm_ext_32: l=1. c=0, a != (0, 7)", bytez=bytez, va=va)
@@ -1910,7 +1960,7 @@ def adv_xfer_arm_ext_32(va, val1, val2):
         else:   # c == 1
             # p.A8-942
             mnem, opcode = 'vmov', INS_VMOV
-            opers = ()
+            return p_vmov_scalar(val, va)   # from the ARM code....
 
     return COND_AL, opcode, mnem, opers, iflags, simdflags
 
