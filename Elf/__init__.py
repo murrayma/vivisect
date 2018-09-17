@@ -30,6 +30,8 @@ import vstruct
 import vstruct.defs.elf as vs_elf
 
 verbose = False
+HACK_SYMTABSZ = -1   # ELF doesn't have a SYMTABSZ entry, we're creating our own
+
 
 class ElfReloc:
     """
@@ -273,12 +275,14 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         self.symbols_by_addr = {}
         self.dynamics = []
         self.dynamic_symbols = []
+        self.strtab = None
 
         self._parsePheaders()
         self._parseSections()
+        self._parseDynLinkInfo()
+        self._parseDynSyms()
         self._parseSymbols()
-        self._parseDynamic()
-        self._parseRelocs()
+        self._parseDynRelocs()
 
     def getRelocTypeName(self, rtype):
         '''
@@ -353,67 +357,65 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
 
                     self.addSymbol(sym)
 
-    def _parseDynamic(self):
-        symtab = self.getSectionBytes('.dynsym')
-        if symtab == None:
-            return
+    def getDynRelInfo(self):
+        rel = self.dyns.get(DT_REL)
+        relent = self.dyns.get(DT_RELENT)
+        relsz = self.dyns.get(DT_RELSZ)
+        return rel, relent, relsz
 
-        sym = self._cls_symbol(bigend=self.bigend)
-        syms = sym * (len(symtab) / len(sym))
-        vstruct.VArray(elems=syms).vsParse(symtab,fast=True)
+    def getDynRelaInfo(self):
+        rela = self.dyns.get(DT_RELA)
+        relaent = self.dyns.get(DT_RELAENT)
+        relasz = self.dyns.get(DT_RELASZ)
+        return rela, relaent, relasz
 
-        for sym in syms:
-            if not sym.st_name:
-                continue
-            name = self.getStrtabString(sym.st_name,".dynstr")
-            sym.setName(name)
+    def getDynPltRelInfo(self):
+        jmprel = self.dyns.get(DT_JMPREL)
+        pltrel = self.dyns.get(DT_PLTREL)
+        pltrelsz = self.dyns.get(DT_PLTRELSZ)
+        return jmprel, pltrel, pltrelsz
 
-        self.dynamic_symbols.extend(syms)
-
-        dynbytes = self.getSectionBytes('.dynamic')
-        while dynbytes:
-            if self.bits == 32:
-                dyn = Elf32Dynamic(bigend=self.bigend)
-            elif self.bits == 64:
-                dyn = Elf64Dynamic(bigend=self.bigend)
-            else:
-                raise Exception('Platform not supported: %d' % (self.bits))
-            dyn.vsParse(dynbytes)
-            if dyn.d_tag in Elf32Dynamic.has_string:
-                name = self.getStrtabString(dyn.d_value, ".dynstr")
-                dyn.setName(name)
-
-            self.dynamics.append(dyn)
-            if dyn.d_tag == DT_NULL: # Represents the end
-                break
-            dynbytes = dynbytes[len(dyn):]
-
-    def _parseRelocs(self):
+    def _parseDynRelocs(self):
         """
-        Parse all the relocation entries out of any sections with
-        sh_type == SHT_REL
+        Parse all the relocation entries out of Dyn table entries based at
+        * REL
+        * RELA
+        * JMPREL
         """
-        for sec in self.sections:
-            if sec.sh_type not in (SHT_REL,SHT_RELA):
-                continue
+        rel, relent, relsz = self.getDynRelInfo()
+        if rel != None:
+            cls = self._cls_reloc
+            self._doRelocs(rel, relsz, cls)
 
-            reloccls = self._cls_reloc
-            if sec.sh_type == SHT_RELA:
-                reloccls = self._cls_reloca
+        rela, relaent, relasz = self.getDynRelaInfo()
+        if rela != None:
+            cls = self._cls_reloca
+            self._doRelocs(rela, relasz, cls)
 
-            secbytes = self.readAtOffset(sec.sh_offset, sec.sh_size)
-            reloc = reloccls(bigend=self.bigend)
-            count, remain = divmod(len(secbytes),len(reloc))
+        jmprel, pltrel, pltrelsz = self.getDynPltRelInfo()
+        if jmprel != None:
+            cls = (self._cls_reloc, self._cls_reloca)[pltrel==DT_RELA]
+            self._doRelocs(jmprel, pltrelsz, cls)
 
-            relocs = reloc * count
-            vstruct.VArray(elems=relocs).vsParse(secbytes,fast=True)
 
-            for reloc in relocs:
-                index = reloc.getSymTabIndex()
-                if index < len(self.dynamic_symbols):
-                    sym = self.dynamic_symbols[index]
-                    reloc.setName( sym.getName() )
-                self.relocs.append(reloc)
+    def _doRelocs(self, rva, relsz, cls=None):
+        if cls == None:
+            cls = self._cls_reloc
+
+        reloc = cls(bigend=self.bigend)
+        relbytes = self.readAtRva(rva, relsz)
+        #print repr(relbytes)
+        count, remain = divmod(relsz, len(reloc))
+
+        relocs = reloc * count
+        vstruct.VArray(elems=relocs).vsParse(relbytes,fast=True)
+
+        for reloc in relocs:
+            index = reloc.getSymTabIndex()
+            if index < len(self.dynamic_symbols):
+                sym = self.dynamic_symbols[index]
+                reloc.setName( sym.getName() )
+            self.relocs.append(reloc)
 
     def getBaseAddress(self):
         """
@@ -595,7 +597,10 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         return self.e_type == ET_EXEC
 
     def __repr__(self, verbose=False):
-        """  Returns a string summary of this ELF.  If (verbose) the summary will include Symbols, Relocs, Dynamics and Dynamic Symbol tables"""
+        """  
+        Returns a string summary of this ELF.  
+        If (verbose) the summary will include Symbols, Relocs, Dynamics and Dynamic Symbol tables
+        """
         mystr = 'Elf Binary:'
         mystr+= "\n= Intimate Details:"
         mystr+= "\n==Magic:\t\t\t\t"       + self.e_ident
@@ -624,15 +629,10 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         return mystr
 
     def verbrepr(self):
+        '''
+        "Verbose" repr.  Returns a string like __repr__(), with dynamics and symbols
+        '''
         mystr = repr(self)
-
-        mystr+= "\n\n= Symbols table:"
-        for sym in self.symbols:
-            mystr+= "\n"+repr(sym)
-
-        mystr+= "\n\n= Relocation table:"
-        for reloc in self.relocs:
-            mystr+= "\n"+repr(reloc)
 
         mystr+= "\n\n= Dynamics table:"
         for dyn in self.dynamics:
@@ -641,6 +641,14 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         mystr+= "\n\n= Dynamic Symbols table:"
         for dyn in self.dynamic_symbols:
             mystr+= "\n"+repr(dyn)
+
+        mystr+= "\n\n= Symbols table:"
+        for sym in self.symbols:
+            mystr+= "\n"+repr(sym)
+
+        mystr+= "\n\n= Relocation table:"
+        for reloc in self.relocs:
+            mystr+= "\n"+repr(reloc)
 
         return mystr
  
@@ -666,12 +674,145 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         return list(self.pheaders)
 
     def addSymbol(self, symbol):
+        '''
+        Add a symbol to the Symbols table, along with caching symbols_by_name and symbols_by_addr
+        These symbols are from ELF Sections of type SHT_SYMTAB
+        '''
         self.symbols.append(symbol)
         self.symbols_by_name[symbol.getName()] = symbol
         self.symbols_by_addr[symbol.st_value] = symbol
 
     def getSymbols(self):
+        '''
+        Returns discovered Symbols (from ELF Sections)
+        '''
         return self.symbols
+
+
+    def getDynHdr(self):
+        phdr = None
+        for phdr in self.getPheaders():
+            if phdr.p_type == PT_DYNAMIC:
+                break
+        return phdr
+
+    def getDynBytes(self):
+        '''
+        Finds and returns the bytes from a Program Header of type PT_DYNAMIC
+        '''
+        phdr = self.getDynHdr()
+        dynbytes = self.readAtOffset(phdr.p_offset, phdr.p_filesz)
+        return dynbytes
+
+    def _parseDynLinkInfo(self):
+        '''
+        Parse the Dynamics section and populate both self.dynamics and self.dyns
+        This must be run before most Dynamic-data accessors like getDynStrTabString(), 
+        getDynSymTabInfo(), etc..
+        '''
+        self.dyns = {}
+        dynbytes = self.getDynBytes()
+
+        while dynbytes:
+            if self.bits == 32:
+                dyn = Elf32Dynamic(bigend=self.bigend)
+            elif self.bits == 64:
+                dyn = Elf64Dynamic(bigend=self.bigend)
+            else:
+                raise Exception('Platform not supported: %d' % (self.bits))
+
+            dyn.vsParse(dynbytes)
+
+            # dump the tag/value pairs into the "dyns" dictionary.  if multiples, create a tuple
+            curdyn = self.dyns.get(dyn.d_tag)
+            if curdyn != None:
+                self.dyns[dyn.d_tag] = (curdyn, dyn.d_value)
+            else:
+                self.dyns[dyn.d_tag] = dyn.d_value
+            #print "dynamic: %r: 0x%x" % (dt_names.get(dyn.d_tag), dyn.d_value)
+
+            # FIXME: storing info in both dyns{} and dynamics[].  Is this a problem?
+            self.dynamics.append(dyn)
+            if dyn.d_tag == DT_NULL: # Represents the end
+                break
+            dynbytes = dynbytes[len(dyn):]
+
+    def _parseDynSyms(self):
+        # terminate SYMTAB (SYMTABSZ doesn't actually exist)
+        symtabva = self.dyns.get(DT_SYMTAB)
+        nextva = 0xffffffffffffffff
+        for val in self.dyns.values():
+            # FIXME: make a list of valid dynamic entries... would hate for a string offset or size to somehow cut this short on smaller bins based from 0
+            if val < nextva and val > symtabva:
+                nextva = val
+        self.dyns[HACK_SYMTABSZ] = nextva - symtabva
+
+        # setup STRTAB for string recovery:
+        strtab = self.dyns.get(DT_STRTAB) 
+        strsz = self.dyns.get(DT_STRSZ)
+        if strtab != None and strsz != None:
+            self.setDynStrTab(strtab, strsz)
+
+        for dyn in self.dynamics:
+            if dyn.d_tag in Elf32Dynamic.has_string:
+                name = self.getDynStrtabString(dyn.d_value)
+                dyn.setName(name)
+
+        # process dynamic symbol table
+        symtabrva, symsz, symtabsz = self.getDynSymTabInfo()
+        if symtabrva != None:
+            symtab = self.readAtRva(symtabrva, symtabsz)
+
+            sym = self._cls_symbol(bigend=self.bigend)
+            count = symtabsz / symsz
+            syms = self.syms = sym * count #symsz
+            vstruct.VArray(elems=syms).vsParse(symtab,fast=True)
+
+            for sym in syms:
+                if not sym.st_name:
+                    continue
+                name = self.getDynStrtabString(sym.st_name)
+                sym.setName(name)
+
+            self.dynamic_symbols.extend(syms)
+
+        return self.dyns
+
+    def getDynStrTabInfo(self):
+        return self.strtab
+
+    def getDynSymTabInfo(self):
+        '''
+        Returns Symbol Table information (as obtained through Dynamics only)
+        Assumes STRTAB immediately follows SYMTAB (to 
+        returns (symtabva, symbolsz, symtabsz)
+        '''
+        symtabva = self.dyns.get(DT_SYMTAB)
+        symsz = self.dyns.get(DT_SYMENT)
+        symtabsz = self.dyns.get(HACK_SYMTABSZ)
+
+        return symtabva, symsz, symtabsz
+
+    def setDynStrTab(self, rva, size):
+        if self.strtab != None:
+            curtab = self.strtab[0]
+            print('wtf?  multiple dynamic string tables?  old: 0x%x  new: 0x%x' % (curtab, rva))
+
+        self.strtab = (rva, size)
+
+    def getDynStrtabString(self, stroff):
+        '''
+        Returns a string starting at stroff
+        '''
+        if self.strtab == None:
+            print "no dyn strtabs!"
+            return ''
+
+        strtab, strsz = self.strtab
+        strings = self.readAtRva(strtab, strsz)
+        strend = strings.find('\0', stroff)
+
+        return strings[stroff:strend]
 
 def getRelocType(val):
     return val & 0xff
