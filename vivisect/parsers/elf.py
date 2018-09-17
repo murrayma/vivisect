@@ -184,6 +184,79 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         if addbase: sva += baseaddr
 
         vw.addSegment(sva, size, sname, fname)
+        # FIXME: since getFile is based on segments, and some Elfs don't reach this...
+        #       should we instead include ProgramHeaders?
+
+    # load information from dynamics:
+    f_init = elf.dyns.get(Elf.DT_INIT)
+    if f_init != None:
+        if addbase:
+            f_init += baseaddr
+        vw.makeName(f_init, "init_function", filelocal=True)
+        vw.addEntryPoint(f_init)
+
+    f_fini = elf.dyns.get(Elf.DT_FINI)
+    if f_fini != None:
+        if addbase:
+            f_fini += baseaddr
+        vw.makeName(f_fini, "fini_function", filelocal=True)
+        vw.addEntryPoint(f_fini)
+
+    f_inita = elf.dyns.get(Elf.DT_INIT_ARRAY)
+    if f_inita != None:
+        f_initasz = elf.dyns.get(Elf.DT_INIT_ARRAYSZ)
+        if addbase:
+            f_inita += baseaddr
+        for off in range(0, f_initasz, vw.psize):
+            iava = f_inita + off
+            fva = vw.readMemValue(iava, vw.psize)
+            if addbase:
+                fva += baseaddr
+            vw.makeName(fva, "init_array_%d" % off, filelocal=True)
+            vw.addEntryPoint(fva)
+
+    f_finia = elf.dyns.get(Elf.DT_FINI_ARRAY)
+    if f_finia != None:
+        f_finiasz = elf.dyns.get(Elf.DT_FINI_ARRAYSZ)
+        if addbase:
+            f_finia += baseaddr
+        for off in range(0, f_finiasz, vw.psize):
+            fava = f_finia + off
+            fva = vw.readMemValue(fava, vw.psize)
+            if addbase:
+                fva += baseaddr
+            vw.makeName(fva, "fini_array_%d" % off, filelocal=True)
+            vw.addEntryPoint(fva)
+
+    f_preinita = elf.dyns.get(Elf.DT_PREINIT_ARRAY)
+    if f_preinita != None:
+        f_preinitasz = elf.dyns.get(Elf.DT_PREINIT_ARRAY)
+        if addbase:
+            f_preinita += baseaddr
+        for off in range(0, f_preinitasz, vw.psize):
+            piava = f_preinita + off
+            fva = vw.readMemValue(piava, vw.psize)
+            if addbase:
+                fva += baseaddr
+            vw.makeName(fva, "preinit_array_%d" % off, filelocal=True)
+            vw.addEntryPoint(fva)
+
+    # dynamic table
+    phdr = elf.getDynHdr()    # file offset?
+    sva, size = phdr.p_vaddr, phdr.p_memsz
+    if addbase: sva += baseaddr     # getDynInfo returns (offset, filesz)
+    makeDynamicTable(vw, sva, sva+size)
+
+    # dynstr table
+    sva, size = elf.getDynStrTabInfo()
+    if addbase: sva += baseaddr
+    makeStringTable(vw, sva, sva+size)
+
+    # dynsyms table
+    sva, symsz, size = elf.getDynSymTabInfo()
+    if addbase: sva += baseaddr
+    for s in makeSymbolTable(vw, sva, sva+size):
+        pass
 
     # Now trigger section specific analysis
     for sec in secs:
@@ -198,27 +271,6 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
 
         if sname == ".interp":
             vw.makeString(sva)
-
-        elif sname == ".init":
-            vw.makeName(sva, "init_function", filelocal=True)
-            vw.addEntryPoint(sva)
-
-        elif sname == ".fini":
-            vw.makeName(sva, "fini_function", filelocal=True)
-            vw.addEntryPoint(sva)
-
-        elif sname == ".dynamic": # Imports
-            makeDynamicTable(vw, sva, sva+size)
-
-        # FIXME section names are optional, use dynamic info from .dynamic
-        elif sname == ".dynstr": # String table for dynamics
-            makeStringTable(vw, sva, sva+size)
-
-        elif sname == ".dynsym":
-            #print "LINK",sec.sh_link
-            for s in makeSymbolTable(vw, sva, sva+size):
-                pass
-                #print "########################.dynsym",s
 
         # If the section is really a string table, do it
         if sec.sh_type == Elf.SHT_STRTAB:
