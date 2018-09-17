@@ -19,22 +19,15 @@ from envi.archs.arm.const import *
 from envi.archs.arm.regs import *
 
 # FIXME: TODO
-# FIXME:   codeflow currently misses all switchcases
+# FIXME:   codeflow currently misses switchcases
 # FIXME:   codeflow needs to identify the following pattern as a call with fallthrough
 #          (currently identifying the xref and making the fallthrough into a function):
 #           mov lr, pc
 #           sub pc, <blah>
 
-# FIXME ldm sp, { pc } seems to not get marked NOFALL
-# FIXME ldm sp, { pc } should probably be marked IF_RET too...
-# FIXME b lr / bx lr should be marked IF_RET as well!
-# FIXME some arm opcode values are ENC << and some are ENC and some are etc..
-#       (make all be ENC_FOO << 16 + <their index>
-
 # FIXME the following things dont decode correctly
 # 5346544e    cmppl   r6, #1308622848
 
-#
 # Possible future extensions: 
 #   * VectorPointFloat subsystem (coproc 10+11)
 #   * Debug subsystem (coproc 14)
@@ -248,8 +241,12 @@ def p_dp_imm_shift(opval, va):
                 ArmRegShiftImmOper(Rm, shtype, shval, va),
             )
             # case: mov pc, lr
-            if Rd == REG_PC and Rm == REG_LR:
-                iflags |= envi.IF_RET
+            if Rd == REG_PC:
+                if Rm == REG_LR:
+                    iflags |= envi.IF_RET | envi.IF_NOFALL
+
+                else:
+                    iflags |= envi.IF_BRANCH
 
     elif ocode in dp_noRd:
         olist = (
@@ -409,6 +406,8 @@ def p_misc1(opval, va): #
         olist = ( ArmRegOper(Rm, va=va), )
         if Rm == REG_LR:
             iflags |= envi.IF_RET | envi.IF_NOFALL
+        else:
+            iflags |= envi.IF_BRANCH
         
     elif opval & 0x0ff000f0 == 0x01600010:  
         opcode = INS_CLZ
@@ -1297,6 +1296,9 @@ def p_load_mult(opval, va):
         # If the load is from the stack, call it a "return"
         if Rn == REG_SP:
             flags |= envi.IF_RET | envi.IF_NOFALL
+        else:
+            flags |= envi.IF_BRANCH
+
     if puswl & 2:       # W (mnemonic: "!")
         flags |= IF_W
         olist[0].oflags |= OF_W
@@ -3926,7 +3928,6 @@ class ArmRegOper(ArmOperand):
 
     def __init__(self, reg, va=0, oflags=0):
         if reg == None:
-            raise Exception("ArmRegOper: None Reg Type!")
             raise envi.InvalidInstruction(mesg="None Reg Type!",
                     bytez='f00!', va=va)
         self.va = va
@@ -3947,6 +3948,9 @@ class ArmRegOper(ArmOperand):
 
     def isReg(self):
         return True
+
+    def getWidth(self):
+        return rctx.getRegisterWidth(self.reg) / 8
 
     def getOperValue(self, op, emu=None):
         if self.reg == REG_PC:
@@ -4148,13 +4152,14 @@ class ArmImmOper(ArmOperand):
         return '#0x%.2x' % (val)
 
 class ArmFloatOper(ArmImmOper):
-    def __init__(self, val, size=4):
+    def __init__(self, val, size=4, endian=envi.ENDIAN_LSB):
         self.val = val
         self.size = size
+        self.endian = endian
 
     def getOperValue(self, op, emu=None):
-        infmt = (0, 0, 0, 0, '<I', 0, 0, 0, '<Q')[self.size]
-        outfmt = (0, 0, 0, 0, '<f', 0, 0, 0, '<d')[self.size]
+        infmt = fmt_chars[self.endian][self.size]
+        outfmt = fmt_floats[self.endian][self.size]
         bytez = struct.pack(infmt, self.val)
         retval = struct.unpack(outfmt, bytez)[0]
         return retval
@@ -4168,6 +4173,9 @@ class ArmFloatOper(ArmImmOper):
         return '#%f' % (val)
 
 class ArmImmFPOper(ArmImmOper):
+    '''
+    What's the difference between this and ArmFloatOper??
+    '''
     def __init__(self, val, precision=0):
         self.val = val
         self.precision = precision
@@ -5015,9 +5023,6 @@ class ArmCPSFlagsOper(ArmOperand):
 
 AIF_FLAGS = ('a','i','f')[::-1]
 
-ENDIAN_LSB = 0
-ENDIAN_MSB = 1
-
 class ArmDisasm:
     _optype = envi.ARCH_ARMV7
     _opclass = ArmOpcode
@@ -5025,22 +5030,35 @@ class ArmDisasm:
     #This holds the current running Arm instruction version and mask
     _archVersionMask = ARCH_REVS['ARMv7A']
 
-    def __init__(self, endian=ENDIAN_LSB, mask = 'ARMv7A'):
+    def __init__(self, endian=envi.ENDIAN_LSB, mask = 'ARMv7A'):
         self.setArchMask(mask)
         self.setEndian(endian)
 
     def setArchMask(self, key = 'ARMv7R'):
-        ''' set arch version mask '''
+        ''' 
+        set arch version mask 
+        '''
         self._archVersionMask = ARCH_REVS.get(key,0)
 
     def getArchMask(self):
+        ''' 
+        set arch version mask 
+        '''
         return self._archVersionMask
 
     def setEndian(self, endian):
+        '''
+        set endianness for the architecture.
+        ENDIAN_LSB and ENDIAN_MSB are appropriate arguments
+        '''
         self.endian = endian
         self.fmt = ("<I", ">I")[endian]
 
     def getEndian(self):
+        '''
+        set endianness for the architecture.
+        ENDIAN_LSB and ENDIAN_MSB are appropriate return values
+        '''
         return self.endian
 
     def disasm(self, bytez, offset, va):

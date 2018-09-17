@@ -124,7 +124,7 @@ def rm4_shift3(va, value): #bx/blx
     oper = ArmRegOper((value >> shval) & mask, va=va)
     if oval == REG_LR:
         l = bool(value & 0b0000000010000000)
-        iflags = envi.IF_RET | (envi.IF_NOFALL, envi.IF_CALL)[l]
+        iflags = (envi.IF_RET | envi.IF_NOFALL, envi.IF_CALL)[l]
     return COND_AL, (oper,), iflags
 
 banked_regs = (
@@ -2334,7 +2334,7 @@ class ThumbDisasm:
     _tree = ttree2
     _optype = envi.ARCH_THUMB
     _opclass = ThumbOpcode
-    def __init__(self, doModeSwitch=True, endian=ENDIAN_LSB):
+    def __init__(self, doModeSwitch=True, endian=envi.ENDIAN_LSB):
         self._doModeSwitch = doModeSwitch
         self.setEndian(endian)
 

@@ -132,7 +132,6 @@ class ArmWorkspaceEmulator(v_i_emulator.WorkspaceEmulator, e_arm.ArmEmulator):
                         self.setFlag(PSR_T_bit, 1)
                         if verbose: print "ArmWorkspaceEmulator: Heuristically Determined funcva is THUMB:  0x%x" % funcva
                 else:
-                    #if verbose: print "ArmWorkspaceEmulator: Nothing specified, defaulting to ARM: 0x%x" % funcva
                     if verbose: print "ArmWorkspaceEmulator: Heuristically Determined funcva is ARM:  0x%x" % funcva
 
 

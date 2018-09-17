@@ -159,7 +159,10 @@ master_fmts = (fmt_chars, fmt_schars)
 fmt_sizes =  (None,1,2,4,4,8,8,8,8)
 
 
-fmt_schars = (le_fmt_schars, be_fmt_schars)
+le_fmt_float = (None, None, None, None, '<f', None, None, None, '<d')
+be_fmt_float = (None, None, None, None, '>f', None, None, None, '>d')
+
+fmt_floats = (le_fmt_float, be_fmt_float)
 
 
 def parsebytes(bytes, offset, size, sign=False, bigend=False):
