@@ -19,7 +19,7 @@ from envi.archs.arm.const import *
 from envi.archs.arm.regs import *
 
 # FIXME: TODO
-# FIXME:   codeflow currently misses switchcases
+# FIXME:   codeflow currently misses some switchcases
 # FIXME:   codeflow needs to identify the following pattern as a call with fallthrough
 #          (currently identifying the xref and making the fallthrough into a function):
 #           mov lr, pc
@@ -4158,8 +4158,8 @@ class ArmFloatOper(ArmImmOper):
         self.endian = endian
 
     def getOperValue(self, op, emu=None):
-        infmt = fmt_chars[self.endian][self.size]
-        outfmt = fmt_floats[self.endian][self.size]
+        infmt = e_bits.fmt_chars[self.endian][self.size]
+        outfmt = e_bits.fmt_floats[self.endian][self.size]
         bytez = struct.pack(infmt, self.val)
         retval = struct.unpack(outfmt, bytez)[0]
         return retval
