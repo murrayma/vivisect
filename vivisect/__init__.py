@@ -13,6 +13,7 @@ import string
 import struct
 import weakref
 import hashlib
+import logging
 import itertools
 import traceback
 import threading
@@ -49,6 +50,8 @@ from vivisect.const import *
 from vivisect.defconfig import *
 
 import vivisect.analysis.generic.emucode as v_emucode
+
+logger = logging.getLogger(__name__)
 
 def guid(size=16):
     return hexlify(os.urandom(size))
@@ -903,6 +906,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         Most of the time, absolute pointes which point to code
         point to the function entry, so test it for the sig.
         """
+        logger.debug('%s === isProbablyCode(0x%x)' % (__name__, va))
         if not self.isExecutable(va):
             return False
         ret = self.isFunctionSignature(va)
@@ -917,10 +921,14 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         try:
             emu.runFunction(va, maxhit=1)
         except Exception, e:
+            logger.debug('%s ===== NOT CODE (exception): 0x%x  %r', __name__, va, e)
+            #sys.excepthook(*sys.exc_info())
             return False
  
         if wat.looksgood():
             return True
+
+        logger.debug('%s ===== NOT CODE (not looksgood): 0x%x' % (__name__, va))
         return False
 
     #################################################################
