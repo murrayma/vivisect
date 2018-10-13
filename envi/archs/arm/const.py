@@ -737,7 +737,7 @@ instrnames = [
         'HINT',
 ]
 
-ins_index = 85
+ins_index = 0
 for instr in instrnames:
     globals()['INS_' + instr] = ins_index
     ins_index += 1

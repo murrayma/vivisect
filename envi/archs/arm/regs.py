@@ -9,7 +9,7 @@ Strategy:
     * Emulator does translation from register/mode to actual storage container
         using reg_table and some math (see _getRegIdx)
 '''
-arm_regs = (
+arm_regs = [
     ('r0', 32),
     ('r1', 32),
     ('r2', 32),
@@ -29,8 +29,12 @@ arm_regs = (
     ('cpsr', 32),
     ('nil', 32),   # place holder
     # FIXME: need to deal with ELR_hyp
-)
+]
 MAX_REGS = 17
+arm_regs.extend([('q%d' % x, 128) for x in range(VFP_QWORD_REG_COUNT)])
+
+# force them into a tuple for faster run-time access
+arm_regs = tuple(arm_regs)
 
 arm_metas = [
         ("r13", REG_SP, 0, 32),
