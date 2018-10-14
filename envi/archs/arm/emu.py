@@ -57,7 +57,7 @@ class CoProcEmulator:       # useful for prototyping, but should be subclassed
 def _getRegIdx(idx, mode):
     if idx >= MAX_REGS:
         return idx
-    ridx = idx + (mode*17)  # account for different banks of registers
+    ridx = idx + (mode*REGS_PER_MODE)  # account for different banks of registers
     ridx = reg_table[ridx]  # magic pointers allowing overlapping banks of registers
     return ridx
 
@@ -765,9 +765,9 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
             src1 = self.getOperValue(op, 0)
             src2 = self.getOperValue(op, 1)
-            
+                
             val = src2 - src1
-            
+                
             #print "vcmpe %r %r  %r  %r" % (op, src1, src2, val)
             fpsrc = self.getRegister(REG_FPSCR)
 
@@ -787,14 +787,15 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             print("vcmpe exception: %r" % e)
 
     def i_vcvt(self, op):
+        print op, op.opers
         print("complete implementing vcvt")
-        frac_bits = 64 - op.opers[2].val
         width = op.opers[0].getWidth()
         regcnt = width / 4
 
         
         if len(op.opers) == 3:
             for reg in range(regcnt):
+                #frac_bits = 64 - op.opers[2].val
 
                 if op.simdflags & IFS_F32_S32:
                     pass
@@ -807,6 +808,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         elif len(op.opers) == 2:
             for reg in range(regcnt):
+                #frac_bits = 64 - op.opers[1].val
 
                 if op.simdflags & IFS_F32_S32:
                     pass
@@ -1503,11 +1505,11 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         dsize = op.opers[0].tsize
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
-            imm5 = self.getOperValue(op, 2)
+            imm5 = self.getOperValue(op, 2) & 0b11111
 
         else:
             src = self.getOperValue(op, 0)
-            imm5 = self.getOperValue(op, 1)
+            imm5 = self.getOperValue(op, 1) & 0b11111
 
         val = ((src >> imm5) | (src << 32-imm5)) & 0xffffffff
         carry = (val >> 31) & 1

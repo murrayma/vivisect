@@ -3949,8 +3949,11 @@ class ArmRegOper(ArmOperand):
     def involvesPC(self):
         return self.reg == 15
 
-    def isDeref(self):
-        return False
+    def isReg(self):
+        return True
+
+    def getWidth(self):
+        return rctx.getRegisterWidth(self.reg) / 8
 
     def getOperValue(self, op, emu=None):
         if self.reg == REG_PC:
@@ -3998,7 +4001,7 @@ class ArmRegScalarOper(ArmRegOper):
         return False
 
     def isDeref(self):
-        return False
+        return True
 
     def getOperValue(self, op, emu=None):
         if emu == None:
@@ -4153,6 +4156,9 @@ class ArmImmOper(ArmOperand):
 
     def isDeref(self):
         return False
+
+    def isImmed(self):
+        return True
 
     def isDiscrete(self):
         return True
@@ -4659,6 +4665,9 @@ class ArmPcOffsetOper(ArmOperand):
         return True
 
     def involvesPC(self):
+        return True
+
+    def isImmed(self):
         return True
 
     def isDeref(self):
