@@ -515,9 +515,6 @@ def case_E_I16L(types, data, va):
     op0 = operands[types[0]]
     val1 = (data & 0x1F0000) >> 5;
     val1 |= (data & 0x7FF);
-    if (val1 & 0x8000):
-            val1 = 0xFFF8000 | val1;
-
     op1 = operands[types[1]]
 
     opers = ( op0(val0, va), op1(val1, va) )
@@ -528,8 +525,6 @@ def case_E_I16LS(types, data, va):
     op0 = operands[types[0]]
     val1 = (data & 0x1F0000) >> 5;
     val1 |= (data & 0x7FF);
-    if (val1 & 0x8000):
-            val1 = 0xFFFF8000 | val1;
     
     op1 = operands[types[1]]
 
@@ -635,6 +630,26 @@ def case_F_EVX(types, data, va):
 case_F_X    = case_F_EVX
 case_F_XO   = case_F_EVX
 
+def case_F_X_2(types, data, va):
+    opers = []
+    if (types[0] != TYPE_NONE):
+        #print types[1]
+        val1 = (data & 0x1F0000) >> 16;
+        op1 = operands[types[1]]
+        opers.append(op1(val1, va))
+
+    if (types[1] != TYPE_NONE):
+        val0 = (data & 0x3E00000) >> 21;
+        op0 = operands[types[0]]
+        opers.append(op0(val0, va))
+
+    if (types[2] != TYPE_NONE):
+        val2 = (data & 0xF800) >> 11;
+        op2 = operands[types[2]]
+        opers.append(op2(val2, va))
+
+    return opers
+
 def case_F_XRA(types, data, va):
     val1 = (data & 0x3E00000) >> 21;
     op1 = operands[types[0]]
@@ -647,6 +662,9 @@ def case_F_XRA(types, data, va):
 
     opers = (op0(val0, va), op1(val1, va), op2(val2, va))
     return opers
+
+# e_ instructions also use the same break-down.
+case_E_XRA = case_F_XRA
 
 def case_F_CMP(types, data, va):
     val0 = (data & 0x3800000) >> 23;
@@ -738,7 +756,9 @@ def case_F_XER(types, data, va):
 def case_F_MFPR(types, data, va):
     val0 = (data & 0x1E00000) >> 21;
     op0 = operands[types[0]]
-    val1 = (data & 0x1FF800) >> 11;
+    val1 = (data & 0x1F0000) >> 16
+    val1 |= (data &  0xF800) >> 6
+    val1 += REG_OFFSET_SPR
     op1 = operands[types[1]]
     #print op0, val0, op1, val1
     opers = ( op0(val0, va), op1(val1, va))
@@ -747,15 +767,17 @@ def case_F_MFPR(types, data, va):
 def case_F_MTPR(types, data, va):
     #inverted
     opers = []
+    if types[0] != TYPE_NONE:
+        val0 = (data & 0x001F0000) >> 16
+        val0 |= (data &  0x00F800) >> 6
+        val0 += REG_OFFSET_SPR
+        op0 = operands[types[0]]
+        opers.append(op0(val0, va))
+
     if types[1] != TYPE_NONE:
         val1 = (data & 0x1E00000) >> 21;
         op1 = operands[types[1]]
         opers.append(op1(val1, va))
-
-    if types[0] != TYPE_NONE:
-        val0 = (data & 0x1FF800) >> 11;
-        op0 = operands[types[0]]
-        opers.append(op0(val0, va))
 
     return opers
 
@@ -767,6 +789,7 @@ def case_F_NONE(types, data, va):
 e_handlers = {
         E_X: case_E_X,
         E_XL: case_E_XL,
+        E_XRA: case_E_XRA,
         E_D: case_E_D,
         E_D8: case_E_D8,
         E_I16A: case_E_I16A,
@@ -787,6 +810,8 @@ e_handlers = {
 ppc_handlers = {
         F_X: case_F_X,
         F_XO: case_F_XO,
+        F_XRA: case_F_XRA,
+        F_X_2: case_F_X_2,
         F_EVX: case_F_EVX,
         F_CMP: case_F_CMP,
         F_DCBF: case_F_DCBF,
