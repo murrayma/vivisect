@@ -68,6 +68,9 @@ def addAnalysisModules(vw):
         vw.addAnalysisModule("vivisect.analysis.generic.funcentries")
         vw.addAnalysisModule('vivisect.analysis.ms.msvcfunc')
 
+        if arch in ('ppc', 'vle'):
+            vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
+
         vw.addAnalysisModule('vivisect.analysis.generic.strconst')
 
     elif fmt in ('elf', 'cgc'): # ELF ########################################################
@@ -112,6 +115,9 @@ def addAnalysisModules(vw):
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
         vw.addAnalysisModule("vivisect.analysis.generic.pointers")
 
+        if arch in ('ppc', 'vle'):
+            vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
+
     elif fmt == 'macho': # MACH-O ###################################################
 
         if arch == 'i386':
@@ -140,6 +146,9 @@ def addAnalysisModules(vw):
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
         vw.addAnalysisModule("vivisect.analysis.generic.pointers")
 
+        if arch in ('ppc', 'vle'):
+            vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
+
     elif fmt == 'blob': # BLOB ######################################################
 
         vw.addAnalysisModule("vivisect.analysis.generic.funcentries")
@@ -155,6 +164,10 @@ def addAnalysisModules(vw):
         vw.addFuncAnalysisModule("vivisect.analysis.generic.impapi")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
 
+        if arch in ('ppc', 'vle'):
+            vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
+            #vw.addAnalysisModule("vivisect.analysis.ppc.bootstrap")
+
     elif fmt == 'ihex': # BLOB ######################################################
 
         vw.addAnalysisModule("vivisect.analysis.generic.funcentries")
@@ -169,6 +182,10 @@ def addAnalysisModules(vw):
         vw.addFuncAnalysisModule("vivisect.analysis.generic.switchcase")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.impapi")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
+
+        if arch in ('ppc', 'vle'):
+            vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
+            #vw.addAnalysisModule("vivisect.analysis.ppc.bootstrap")
 
     else:
 

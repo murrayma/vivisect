@@ -6,6 +6,9 @@ Make that apparent.
 import envi
 import vivisect
 
+import logging
+logger = logging.getLogger(__name__)
+
 def analyze(vw):
     """
     Do simple linear disassembly of the .plt section if present.
@@ -64,8 +67,8 @@ def analyzeFunction(vw, funcva):
     if loctup == None:
         return
 
-    if loctup[vivisect.L_LTYPE] != vivisect.LOC_IMPORT: # FIXME: Why are AMD64 IMPORTS showing up as POINTERs?
-        print "0x%x: " % funcva, loctup[vivisect.L_LTYPE], ' != ', vivisect.LOC_IMPORT
+    if loctup[vivisect.L_LTYPE] != vivisect.LOC_IMPORT:
+        logger.debug("0x%x: " % funcva, loctup[vivisect.L_LTYPE], ' != ', vivisect.LOC_IMPORT)
 
     gotname = vw.getName(opval)
     tinfo = gotname

@@ -7,6 +7,7 @@ import envi.memory as e_mem
 import copy
 import struct
 
+from envi import *
 from regs import *
 from const import *
 from disasm import *
@@ -20,57 +21,20 @@ IV_EXT1         = 0x0013
 IV_TIMER1       = 0x001b
 INTVECTOR_4     = 0x0023
 
-### TODO: Make Calling Conventions for PPC.  Examples below.. Replace!
-class StdCall(envi.CallingConvention):
 
-    def getCallArgs(self, emu, count):
-        esp = emu.getRegister(REG_ESP)
-        esp += 1 # For the saved eip
-        return struct.unpack("<%dB" % count, emu.readMemory(esp, count))
+class PpcCall(envi.CallingConvention):
+    '''
+    Does not have shadow space like MSx64.
+    '''
+    arg_def = [(CC_REG, REG_R3 + x) for x in range(7)]
+    arg_def.append((CC_STACK_INF, 8))
+    retaddr_def = (CC_STACK, 0)
+    retval_def = (CC_REG, REG_R3)
+    flags = CC_CALLEE_CLEANUP
+    align = 4
+    pad = 0
 
-class Cdecl(envi.CallingConvention):
-
-    def getCallArgs(self, emu, count):
-        esp = emu.getRegister(REG_ESP)
-        esp += 1 # For the saved eip
-        return struct.unpack("<%dB" % count, emu.readMemory(esp, count))
-
-    def setReturnValue(self, emu, value, ccinfo):
-        esp = emu.getRegister(REG_ESP)
-        eip = struct.unpack("B", emu.readMemory(esp, 1))[0]
-        esp += 1 # For the saved eip
-
-        emu.setRegister(REG_ESP, esp)
-        emu.setRegister(REG_EAX, value)
-        emu.setProgramCounter(eip)
-
-class ThisCall(envi.CallingConvention):
-
-    #FIXME do something about emulated argc vs our arg count...
-    def getCallArgs(self, emu, count):
-        #ret = [emu.getRegister(REG_ECX),]
-        esp = emu.getRegister(REG_ESP)
-        esp += 1 # For the saved eip
-        return struct.unpack("<%dB" % count, emu.readMemory(esp, count))
-
-    def setReturnValue(self, emu, value, ccinfo):
-        """
-        """
-        if ccinfo == None:
-            ccinfo = 0
-        # Our first arg (if any) is in a reg
-        esp = emu.getRegister(REG_ESP)
-        eip = struct.unpack("<B", emu.readMemory(esp, 1))[0]
-        esp += 1 # For the saved eip
-        esp += ccinfo # Cleanup saved args
-        emu.setRegister(REG_ESP, esp)
-        emu.setRegister(REG_EAX, value)
-        emu.setProgramCounter(eip)
-
-# Pre-make these and use the same instances for speed  (x86 leftovers.  apply here?)
-#stdcall = StdCall()
-#thiscall = ThisCall()
-#cdecl = Cdecl()
+ppccall = PpcCall()
 
 OPER_SRC = 1
 OPER_DST = 0
@@ -86,9 +50,7 @@ class PpcEmulator(PpcModule, PpcRegisterContext, envi.Emulator):
         PpcRegisterContext.__init__(self)
         PpcModule.__init__(self)
 
-        #self.addCallingConvention("stdcall", stdcall)
-        #self.addCallingConvention("thiscall", thiscall)
-        #self.addCallingConvention("cdecl", cdecl)
+        self.addCallingConvention("ppccall", ppccall)
 
     
     def undefFlags(self):
@@ -710,9 +672,21 @@ class PpcEmulator(PpcModule, PpcRegisterContext, envi.Emulator):
     def i_isync(self, op):
         print "isync call: %r" % op
 
+    def i_movfrom(self, op):
+        src = self.getOperValue(op, 1)
+        self.setOperValue(op, 0, src)
+
     def i_mov(self, op):
         src = self.getOperValue(op, 0)
         self.setOperValue(op, 1, src)
+
+    def i_mflr(self, op):
+        src = self.getRegister(REG_LR)
+        self.setOperValue(op, 0, src)
+
+    def i_mtlr(self, op):
+        src = self.getOperValue(op, 0)
+        self.setRegister(REG_LR, src)
 
     def i_mfspr(self, op):
         src = self.getOperValue(op, 1)
@@ -722,13 +696,14 @@ class PpcEmulator(PpcModule, PpcRegisterContext, envi.Emulator):
         src = self.getOperValue(op, 0)
         self.setOperValue(op, 1, src)
 
-    i_li = i_mov
+    i_li = i_movfrom
+    i_mr = i_movfrom
 
     def i_lis(self, op):
         src = self.getOperValue(op, 1)
-        print hex(src)
-        self.setOperValue(op, 0, (src<<16))
-        print hex(src<<16)
+        #self.setOperValue(op, 0, (src<<16))
+        # technically this is incorrect, but since we disassemble wrong, we emulate wrong.
+        self.setOperValue(op, 0, (src))
 
     def i_cmpi(self, op):
         L = self.getOperValue(op, 1)
@@ -859,10 +834,38 @@ class PpcEmulator(PpcModule, PpcRegisterContext, envi.Emulator):
         self.setOperValue(op, 0, src)
         self.setOperValue(op, 1, 0)
 
+    def i_lmw(self, op):
+        fmt = ('<I', '>I')[self.getEndian()]
+        op.opers[1].tsize = 4
+        startreg = op.opers[0].reg
+        regcnt = 32-startreg
+
+        startaddr = self.getOperAddr(op, 1)
+
+        offset = 0
+        for regidx in range(startreg, 32):
+            word = self.readMemValue(startaddr + offset, 4)
+            self.setRegister(regidx, word)
+            offset += 4
+
+    def i_stmw(self, op):
+        op.opers[1].tsize = 4
+        startreg = op.opers[0].reg
+        regcnt = 32-startreg
+
+        startaddr = self.getOperAddr(op, 1)
+
+        offset = 0
+        for regidx in range(startreg, 32):
+            word = self.getRegister(regidx)
+            self.writeMemValue(startaddr + offset, word & 0xffffffff, 4)
+            offset += 4
+    
     def i_stwu(self, op):
         op.opers[1].tsize = 4
         src = self.getOperValue(op, 0)
         self.setOperValue(op, 1, src)
+        # the u stands for "update"... ie. write-back
         op.opers[1].updateReg(self)
     
     def i_stw(self, op):
@@ -870,6 +873,47 @@ class PpcEmulator(PpcModule, PpcRegisterContext, envi.Emulator):
         src = self.getOperValue(op, 0)
         self.setOperValue(op, 1, src)
     
+    def i_or(self, op):
+        dst = self.getOperValue(op, 0)
+        src = self.getOperValue(op, 1)
+        # PDE
+        if dst == None or src == None:
+            self.undefFlags()
+            op.opers[OPER_DST].setOperValue(op, self, None)
+            return
+
+        self.setOperValue(op, 0, (dst | src))
+        if op.iflags & IF_RC: self.setFlags(results, 0)
+
+    i_ori = i_or
+
+    def i_oris(self, op):
+        dst = self.getOperValue(op, 0)
+        src = self.getOperValue(op, 1)
+        src <<= 16
+
+        # PDE
+        if dst == None or src == None:
+            self.undefFlags()
+            op.opers[OPER_DST].setOperValue(op, self, None)
+            return
+
+        self.setOperValue(op, 0, (dst | src))
+        if op.iflags & IF_RC: self.setFlags(results, 0)
+
+    def i_orc(self, op):
+        dst = self.getOperValue(op, 0)
+        src = self.getOperValue(op, 1)
+        src = -src
+
+        # PDE
+        if dst == None or src == None:
+            self.undefFlags()
+            op.opers[OPER_DST].setOperValue(op, self, None)
+            return
+
+        self.setOperValue(op, 0, (dst | src))
+        if op.iflags & IF_RC: self.setFlags(results, 0)
 
     def getCr(self, crnum):
         '''
@@ -913,6 +957,95 @@ class PpcEmulator(PpcModule, PpcRegisterContext, envi.Emulator):
     def getSOflag(self, crnum=0):
         cr = self.getCr(crnum)
         return cr >> FLAGS_SO_bitnum
+
+    # VLE instructions
+    i_e_li = i_li
+    i_e_lis = i_lis
+    i_se_mflr = i_mflr
+    i_se_mtlr = i_mtlr
+    i_e_stwu = i_stwu
+    i_e_stmw = i_stmw
+    i_e_lmw = i_lmw
+    i_se_mr = i_mr
+    i_se_or = i_or
+    i_e_ori = i_ori
+    i_e_or2i = i_ori
+    i_e_or2is = i_oris
+
+    '''
+    i_se_bclri                         rX,UI5
+    i_se_bgeni                         rX,UI5
+    i_se_bmaski                        rX,UI5
+    i_se_bseti                         rX,UI5
+    i_se_btsti                         rX,UI5
+    i_e_cmpli instructions, or CR0 for the se_cmpl, e_cmp16i, e_cmph16i, e_cmphl16i, e_cmpl16i, se_cmp,
+    i_se_cmph, se_cmphl, se_cmpi, and se_cmpli instructions, is set to reflect the result of the comparison. The
+    i_e_cmp16i                             rA,SI
+    i_e_cmpi                   crD32,rA,SCI8
+    i_se_cmp                              rX,rY
+    i_se_cmpi                           rX,UI5
+    i_e_cmph                        crD,rA,rB
+    i_se_cmph                            rX,rY
+    i_e_cmph16i                           rA,SI
+    i_e_cmphl                       crD,rA,rB
+    i_se_cmphl                           rX,rY
+    i_e_cmphl16i                         rA,UI
+    i_e_cmpl16i                           rA,UI
+    i_e_cmpli                  crD32,rA,SCI8
+    i_se_cmpl                             rX,rY
+    i_se_cmpli                      rX,OIMM
+    i_se_cmph, se_cmphl, se_cmpi, and se_cmpli instructions, is set to reflect the result of the comparison. The
+    i_e_cmph                        crD,rA,rB
+    i_se_cmph                            rX,rY
+    i_e_cmph16i                           rA,SI
+    i_e_cmphl                       crD,rA,rB
+    i_se_cmphl                           rX,rY
+    i_e_cmphl16i                         rA,UI
+    i_e_crnand               crbD,crbA,crbB
+    i_e_crnor               crbD,crbA,crbB
+    i_e_cror                 crbD,crbA,crbB
+    i_e_crorc               crbD,crbA,crbB
+    i_e_cror                 crbD,crbA,crbB
+    i_e_crorc               crbD,crbA,crbB
+    i_e_crxor                crbD,crbA,crbB
+    i_se_illegal
+    i_se_illegal is used to request an illegal instruction exception. A program interrupt is generated. The contents
+    i_se_isync
+    i_se_isync instruction have been performed.
+    i_e_lmw                         rD,D8(rA)
+    i_e_lwz                           rD,D(rA)                                                             (D-mode)
+    i_se_lwz                       rZ,SD4(rX)                                                            (SD4-mode)
+    i_e_lwzu                         rD,D8(rA)                                                            (D8-mode)
+    i_e_mcrf                          crD,crS
+    i_se_mfar                         rX,arY
+    i_se_mfctr                             rX
+    i_se_mflr                              rX
+    i_se_mr                             rX,rY
+    i_se_mtar                         arX,rY
+    i_se_mtctr                             rX
+    i_se_mtlr                              rX
+    i_se_rfci
+    i_se_rfi
+    i_e_rlw                           rA,rS,rB                                                               (Rc = 0)
+    i_e_rlw.                          rA,rS,rB                                                               (Rc = 1)
+    i_e_rlwi                          rA,rS,SH                                                               (Rc = 0)
+    i_e_rlwi.                         rA,rS,SH                                                               (Rc = 1)
+    i_e_rlwimi             rA,rS,SH,MB,ME
+    i_e_rlwinm              rA,rS,SH,MB,ME
+    i_e_rlwimi             rA,rS,SH,MB,ME
+    i_e_rlwinm              rA,rS,SH,MB,ME
+    i_se_sc provides the same functionality as sc without the LEV field. se_rfi, se_rfci, se_rfdi, and se_rfmci
+    i_se_sc
+    i_se_sc is used to request a system service. A system call interrupt is generated. The contents of the MSR
+    i_e_stmw                        rS,D8(rA)                                                               (D8-mode)
+    i_se_sub                            rX,rY
+    i_se_subf                           rX,rY
+    i_e_subfic                    rD,rA,SCI8                                                                  (Rc = 0)
+    i_e_subfic.                   rD,rA,SCI8                                                                  (Rc = 1)
+    i_se_subi                       rX,OIMM                                                                 (Rc = 0)
+    i_se_subi.                      rX,OIMM                                                                 (Rc = 1)
+    '''
+
 
 #############################  PPC MARKER.  BELOW THIS MARKER IS DELETION FODDER #################################3
     '''

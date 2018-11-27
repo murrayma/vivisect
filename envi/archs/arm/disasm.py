@@ -19,7 +19,7 @@ from envi.archs.arm.const import *
 from envi.archs.arm.regs import *
 
 # FIXME: TODO
-# FIXME:   codeflow currently misses switchcases
+# FIXME:   codeflow currently misses some switchcases
 # FIXME:   codeflow needs to identify the following pattern as a call with fallthrough
 #          (currently identifying the xref and making the fallthrough into a function):
 #           mov lr, pc
@@ -2077,7 +2077,7 @@ def _do_fp_dp(va, val1, val2):
             else:
                 opers = (
                         ArmRegOper(rctx.getRegisterIndex(rbase%d)),
-                        ArmImmFPOper(0.0),
+                        ArmFloatOper(0.0),
                         )
 
         # VCVT p874
@@ -3920,6 +3920,9 @@ class ArmOpcode(envi.Opcode):
 
 class ArmOperand(envi.Operand):
     tsize = 4
+    def involvesPC(self):
+        return False
+
     def getOperAddr(self, op, emu=None):
         return None
 
@@ -3943,7 +3946,7 @@ class ArmRegOper(ArmOperand):
             return False
         return True
     
-    def isPC(self):
+    def involvesPC(self):
         return self.reg == 15
 
     def isReg(self):
@@ -3993,6 +3996,9 @@ class ArmRegScalarOper(ArmRegOper):
         if self.index != oper.index:
             return False
         return True
+    
+    def involvesPC(self):
+        return False
 
     def isDeref(self):
         return True
@@ -4040,6 +4046,12 @@ class ArmRegShiftRegOper(ArmOperand):
             return False
         return True
 
+    def involvesPC(self):
+        return self.reg == 15
+
+    def isDeref(self):
+        return False
+
     def getOperValue(self, op, emu=None):
         if emu == None:
             return None
@@ -4083,6 +4095,12 @@ class ArmRegShiftImmOper(ArmOperand):
         if self.shimm != oper.shimm:
             return False
         return True
+
+    def involvesPC(self):
+        return self.reg == 15
+
+    def isDeref(self):
+        return False
 
     def getOperValue(self, op, emu=None):
         if self.reg == REG_PC:
@@ -4133,6 +4151,12 @@ class ArmImmOper(ArmOperand):
 
         return True
 
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
+
     def isImmed(self):
         return True
 
@@ -4152,26 +4176,50 @@ class ArmImmOper(ArmOperand):
         return '#0x%.2x' % (val)
 
 class ArmFloatOper(ArmImmOper):
+    '''
+    float operand (of a particular byte-width)
+    internal storage as N-bit bitfield (like the architecture would)
+    repr/render provides the appropriate floating point value
+    '''
     def __init__(self, val, size=4, endian=envi.ENDIAN_LSB):
-        self.val = val
         self.size = size
         self.endian = endian
+        self.intfmt = e_bits.fmt_chars[self.endian][self.size]
+        self.floatfmt = e_bits.fmt_floats[self.endian][self.size]
+
+        if type(val) == float:
+            self.setByFloat(val)
+        else:
+            self.setByBitField(val)
+
+    def setByFloat(self, val):
+        val = struct.pack(self.floatfmt, val)
+        self.val, = struct.unpack(self.intfmt, val)
+
+    def setByBitField(self, val):
+        self.val = val
 
     def getOperValue(self, op, emu=None):
-        infmt = fmt_chars[self.endian][self.size]
-        outfmt = fmt_floats[self.endian][self.size]
-        bytez = struct.pack(infmt, self.val)
-        retval = struct.unpack(outfmt, bytez)[0]
+        return self.val
+
+    def getFloatValue(self, op, emu=None):
+        '''
+        helper function to deal with the float values (getOperValue returns a bitfield)
+        '''
+        bytez = struct.pack(self.intfmt, self.val)
+        retval = struct.unpack(self.floatfmt, bytez)[0]
         return retval
 
     def render(self, mcanv, op, idx):
-        val = self.getOperValue(op)
+        val = self.getFloatValue(op)
         mcanv.addNameText('#%f' % (val))
 
     def repr(self, op):
-        val = self.getOperValue(op)
+        val = self.getFloatValue(op)
+
         return '#%f' % (val)
 
+"""
 class ArmImmFPOper(ArmImmOper):
     '''
     What's the difference between this and ArmFloatOper??
@@ -4190,7 +4238,7 @@ class ArmImmFPOper(ArmImmOper):
     def repr(self, op):
         val = self.getOperValue(op)
         return '#%.2f' % (val)
-
+"""
 
 class ArmScaledOffsetOper(ArmOperand):
     ''' scaled offset operand.  see "addressing mode 2 - load and store word or unsigned byte - scaled register *" '''
@@ -4230,6 +4278,9 @@ class ArmScaledOffsetOper(ArmOperand):
         if self.psize != oper.psize:
             return False
         return True
+
+    def involvesPC(self):
+        return self.base_reg == 15
 
     def isDeref(self):
         return True
@@ -4363,6 +4414,9 @@ class ArmRegOffsetOper(ArmOperand):
             return False
         return True
 
+    def involvesPC(self):
+        return self.base_reg == 15
+
     def isDeref(self):
         return True
 
@@ -4467,6 +4521,9 @@ class ArmImmOffsetOper(ArmOperand):
         if self.psize != oper.psize:
             return False
         return True
+
+    def involvesPC(self):
+        return self.base_reg == REG_PC
 
     def isDeref(self):
         return True
@@ -4607,8 +4664,14 @@ class ArmPcOffsetOper(ArmOperand):
             return False
         return True
 
+    def involvesPC(self):
+        return True
+
     def isImmed(self):
         return True
+
+    def isDeref(self):
+        return False
 
     def isDiscrete(self):
         return True
@@ -4648,6 +4711,12 @@ class ArmPgmStatRegOper(ArmOperand):
         if self.r != oper.r:
             return False
         return True
+
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
 
     def getOperValue(self, op, emu=None):
         if emu == None:
@@ -4702,6 +4771,12 @@ class ArmPgmStatRegOper(ArmOperand):
 class ArmEndianOper(ArmImmOper):
     def repr(self, op):
         return endian_names[self.val]
+
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
 
     def getOperValue(self, op, emu=None):
         return self.val
@@ -4773,6 +4848,9 @@ class ArmExtRegListOper(ArmOperand):
             return False
         return True
 
+    def isDeref(self):
+        return False
+
     def render(self, mcanv, op, idx):
         regbase = ("s%d", "d%d")[self.size]
         mcanv.addText('{')
@@ -4842,6 +4920,12 @@ class ArmPSRFlagsOper(ArmOperand):
             return False
         return True
 
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
+
     def getOperValue(self, op, emu=None):
         if emu == None:
             return None
@@ -4865,6 +4949,12 @@ class ArmCoprocOpcodeOper(ArmOperand):
             return False
         return True
 
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
+
     def getOperValue(self, op, emu=None):
         return self.val
 
@@ -4884,6 +4974,12 @@ class ArmCoprocOper(ArmOperand):
         if self.val != oper.val:
             return False
         return True
+
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
 
     def getOperValue(self, op, emu=None):
         return self.val
@@ -4910,6 +5006,12 @@ class ArmCoprocRegOper(ArmOperand):
         if self.shtype != oper.shtype:
             return False
         return True
+
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
 
     def getOperValue(self, op, emu=None):
         if emu == None:
@@ -4956,6 +5058,12 @@ class ArmModeOper(ArmOperand):
             return False
         return True
 
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
+
     def getOperValue(self, op, emu=None):
         return None
 
@@ -4975,6 +5083,12 @@ class ArmDbgHintOption(ArmOperand):
         if self.val != oper.val:
             return False
         return True
+
+    def involvesPC(self):
+        return False
+
+    def isDeref(self):
+        return False
 
     def getOperValue(self, op, emu=None):
         return self.val
@@ -5085,7 +5199,8 @@ class ArmDisasm:
                 flags |= envi.IF_NOFALL
 
             elif (  len(olist) and 
-                    olist[0].isPC() and 
+                    isinstance(olist[0], ArmRegOper) and
+                    olist[0].involvesPC() and 
                     (opcode & 0xffff) not in no_update_Rd ):       # FIXME: only want IF_NOFALL if it *writes* to PC!
                 
                 flags |= envi.IF_NOFALL
