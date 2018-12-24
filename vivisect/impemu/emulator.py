@@ -371,10 +371,10 @@ class WorkspaceEmulator:
 
                 except envi.UnsupportedInstruction, e:
                     if self.strictops:
-                        print "STRICTOPS: BREAK!"
+                        if self.vw.verbose: print('runFunction failed: unsupported instruction: 0x%08x %s' % (e.op.va, e.op.mnem))
                         break
                     else:
-                        print 'runFunction continuing after unsupported instruction: 0x%08x %s' % (e.op.va, e.op.mnem)
+                        print('runFunction continuing after unsupported instruction: 0x%08x %s' % (e.op.va, e.op.mnem))
                         self.setProgramCounter(e.op.va+ e.op.size)
                 except Exception, e:
                     #traceback.print_exc()
