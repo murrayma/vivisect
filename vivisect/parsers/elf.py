@@ -90,6 +90,8 @@ archcalls = {
     'arm':'armcall',
     'thumb':'armcall',
     'ppc':'ppccall',
+    'thumb16':'armcall',
+    'aarch64':'a64call',
 }
 
 def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filefmt='elf'):
@@ -415,7 +417,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         if decodedname != sname:  vw.setComment(sva, decodedname)
         if vw.isValidPointer(sva) and len(sname):
             try:
-                vw.makeName(sva, "%s_%x" % (sname,sva), filelocal=True)
+                vw.makeName(sva, sname, filelocal=True)
             except Exception, e:
                 print "WARNING:",e
 

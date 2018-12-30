@@ -153,7 +153,7 @@ class HotKeyMixin(object):
             try:
                 callback(*args,**kwargs)
             except Exception, e:
-                logger.warn("error in eatKeyPressEvent(%r, %r, %r): %s" % (event, args, kwargs, e))
+                logger.warn("error in eatKeyPressEvent(%r, %r, %r): %s", event, args, kwargs, e)
                 logger.debug(''.join(traceback.format_exception(*sys.exc_info())))
 
             event.accept()
