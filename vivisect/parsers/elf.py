@@ -79,6 +79,7 @@ arch_names = {
     Elf.EM_MSP430:'msp430',
     Elf.EM_PPC:'ppc',
     Elf.EM_PPC64:'ppc64',
+    Elf.EM_ARM_AARCH64:'aarch64',
 }
 # FIXME: interpret ELF headers to configure VLE pages
 
