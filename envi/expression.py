@@ -26,7 +26,7 @@ def evaluate(pycode, locals):
             # replace the substrings with the string versions of the lookup value
             for key in keys:
                 if key in pycode:
-                    pval = locals.get(key)
+                    pval = locals[key]
                     pycode = pycode.replace(key, str(pval))
             
             val = eval(pycode, {}, locals)
@@ -49,8 +49,19 @@ class ExpressionLocals(dict):
     def __getitem__(self, name):
         if self.symobj != None:
             ret = self.symobj.getSymByName(name)
-            if ret != None: return ret
+            if ret != None: return ret.value
         return dict.__getitem__(self, name)
+
+    def __iter__(self):
+        for va, name in self.symobj.getNames():
+            yield name
+
+        dict.__iter__(self)
+
+    def keys(self):
+        return [key for key in self]
+        
+
 
 class MemoryExpressionLocals(ExpressionLocals):
 
