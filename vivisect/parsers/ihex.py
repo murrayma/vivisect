@@ -11,6 +11,8 @@ archcalls = {
     'arm':'armcall',
     'ppc':'ppccall',
     'vle':'ppccall',
+    'thumb':'armcall',
+    'thumb16':'armcall',
 }
 
 def parseFile(vw, filename):
@@ -21,7 +23,7 @@ def parseFile(vw, filename):
 
     bigend = vw.config.viv.parsers.ihex.bigend
     if not bigend:
-        raise Exception('IHex loader *requires* arch option (-O viv.parsers.ihex.arch=\\"<archname>\\")')
+        raise Exception('IHex loader *requires* b option (-O viv.parsers.ihex.arch=\\"<archname>\\")')
 
     envi.getArchModule(arch)
 
