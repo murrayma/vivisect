@@ -35,6 +35,7 @@ def addAnalysisModules(vw):
 
         elif arch in ('arm', 'thumb', 'thumb16'):
             vw.addImpApi('windows','arm')
+            vw.addFuncAnalysisModule('vivisect.analysis.arm.naming')
 
         vw.addConstModule('vstruct.constants.ntstatus')
 
@@ -94,6 +95,7 @@ def addAnalysisModules(vw):
             vw.addVaSet('thunk_reg', ( ('fva', vivisect.VASET_ADDRESS), ('reg', vivisect.VASET_INTEGER), ))
             vw.addFuncAnalysisModule('vivisect.analysis.arm.thunk_reg')
             vw.addFuncAnalysisModule('vivisect.analysis.arm.elfplt')
+            vw.addFuncAnalysisModule('vivisect.analysis.arm.naming')
 
         vw.addAnalysisModule("vivisect.analysis.generic.funcentries")
         vw.addAnalysisModule("vivisect.analysis.generic.relocations")
@@ -150,6 +152,7 @@ def addAnalysisModules(vw):
 
         elif arch in ('arm', 'thumb', 'thumb16'):
             vw.addFuncAnalysisModule("vivisect.analysis.arm.emulation")
+            vw.addFuncAnalysisModule('vivisect.analysis.arm.naming')
 
         elif arch in ('ppc', 'vle'):
             vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
@@ -173,6 +176,7 @@ def addAnalysisModules(vw):
 
         if arch in ('arm', 'thumb', 'thumb16'):
             vw.addFuncAnalysisModule("vivisect.analysis.arm.emulation")
+            vw.addFuncAnalysisModule('vivisect.analysis.arm.naming')
 
         vw.addFuncAnalysisModule("vivisect.analysis.generic.impapi")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
@@ -190,6 +194,7 @@ def addAnalysisModules(vw):
 
         if arch in ('arm', 'thumb', 'thumb16'):
             vw.addFuncAnalysisModule("vivisect.analysis.arm.emulation")
+            vw.addFuncAnalysisModule('vivisect.analysis.arm.naming')
 
         vw.addFuncAnalysisModule("vivisect.analysis.generic.codeblocks")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.switchcase")

@@ -273,100 +273,10 @@ def branch_misc(va, val, val2): # bl and misc control
                 mesg="branch_misc subsection 2",
                 bytez=struct.pack("<H", val)+struct.pack("<H", val2), va=va-4)
 
-        else:
-            if imm8 == 0 and op == 0b0111101:
-                imm8 = val2 & 0xff
-                if imm8:
-                    opers = (
-                            ArmRegOper(REG_PC),
-                            ArmRegOper(REG_LR),
-                            ArmImmOper(imm8),
-                            )
-                    return COND_AL, None, 'sub', opers, IF_PSR_S, 0
-
-                return COND_AL, None, 'eret', tuple(), envi.IF_RET | envi.IF_NOFALL, 0
-            print("TEST ME: branch_misc subsection 3")
-##### FIXME!  THIS NEEDS TO ALSO HIT MSR BELOW....
-            #raise InvalidInstruction(
-            #    mesg="branch_misc subsection 3",
-            #    bytez=struct.pack("<H", val)+struct.pack("<H", val2), va=va-4)
-
-            # xx0xxxxx and others
-            if op == 0b0111000:
-                tmp = op2 & 3
-
-                Rn = val & 0xf
-                mask = (val2>>8) & 0xf
-                if tmp == 0:
-                    R = PSR_APSR
-                    #raise Exception("FIXME:  MSR(register) p A8-498")
-
-                else:
-                    R = (val >> 4) & 1
-                    #raise Exception("FIXME:  MSR(register) p B9-1968")
-
-                opers = (
-                        ArmPgmStatRegOper(R, mask),
-                        ArmRegOper(Rn)
-                        )
-                return COND_AL, None, 'msr', opers, None, 0
-
-
-            elif op == 0b0111001:
-                # coalesce with previous
-                raise Exception("FIXME:  MSR(register) p B9-1968")
-
-
-            elif op == 0b0111010:
-                flags = 0
-
-                op1 = (val2>>8) & 7
-                op2 = val2 & 0xff
-                if op1:
-                    opcode = INS_CPS
-                    mnem = 'cps'
-
-                    imod = (val2>>9) & 3    # enable = 0b10, disable = 0b11
-                    m = (val2>>8) & 1   # change mode
-                    aif = (val2>>5) & 7
-                    mode = val2 & 0x1f
-
-                    if (mode and m==0):
-                            raise Exception("CPS with invalid flags set:  UNPREDICTABLE (mode and not m)")
-
-                    if ((imod & 2) and not (aif)) or \
-                        (not (imod & 2) and (aif)):
-                            raise Exception("CPS with invalid flags set:  UNPREDICTABLE imod enable but not a/i/f")
-
-                    if not (imod or m):
-                        # hint
-                        mnem = "CPS Hint...  fix me"
-                        
-                    if imod & 2:
-                        opers = [
-                            ArmCPSFlagsOper(aif)    # if mode is set...
-                        ]
-                        flags |= (IF_IE, IF_ID)[imod&1]
-
-                    else:
-                        opers = []
-                    if m:
-                        opers.append(ArmImmOper(mode))
-
-                else:
-                    opcode, mnem = cpsh_mnems.get(op2, (INS_HINT, 'dbg'))
-                    opers = []
-
-                return COND_AL, opcode, mnem, opers, flags, 0
-
-            elif op == 0b0111011:
-                raise Exception("FIXME:  Misc control instrs p A6-235")
-
-            elif op == 0b0111100:
-                raise Exception("FIXME:  BXJ p A8-352")
-
-            elif op == 0b0111101:   # subs PC, LR, #imm (see special case ERET above)
-                imm8 = val2 & 0xff
+        if imm8 == 0 and op == 0b0111101:
+            # original imm8 was imm4!
+            imm8 = val2 & 0xff
+            if imm8:
                 opers = (
                         ArmRegOper(REG_PC),
                         ArmRegOper(REG_LR),
@@ -374,46 +284,129 @@ def branch_misc(va, val, val2): # bl and misc control
                         )
                 return COND_AL, None, 'sub', opers, IF_PSR_S, 0
 
-            elif op == 0b0111110:
-                Rd = (val2 >> 8) & 0xf
-                opers = (
-                        ArmRegOper(Rd),
-                        ArmRegOper(REG_OFFSET_CPSR),
-                        )
-                return COND_AL, None, 'mrs', opers, None, 0
+            return COND_AL, None, 'eret', tuple(), envi.IF_RET | envi.IF_NOFALL, 0
 
-            elif op == 0b0111111:
-                Rd = (val2 >> 8) & 0xf
+        # xx0xxxxx and others
+        if op & 0b1111110 == 0b0111000:
+            tmp = op2 & 3
+
+            Rn = val & 0xf
+            mask = (val2>>8) & 0xf
+            if not (op & 1) and tmp == 0:
+                # MSR(register) p A8-498
+                R = PSR_APSR
+
+            else:   # op==0111000 and op2==01/10/11 or op==0111001
+                # MSR(register) p B9-1968
                 R = (val >> 4) & 1
-                opers = (
-                        ArmRegOper(Rd),
-                        ArmRegOper(REG_OFFSET_CPSR),
-                        )
+                # System Level Only...
 
-                raise Exception("FIXME:  MRS(register) p B9-1962 - how is R used?")
-                return COND_AL, None, 'mrs', opers, None, 0
+            opers = (
+                    ArmPgmStatRegOper(R, mask),
+                    ArmRegOper(Rn)
+                    )
+            return COND_AL, None, 'msr', opers, None, 0
 
-            elif op == 0b1111110:
-                if op1 == 0:
-                    imm4 = val & 0xf
-                    imm12 = val2 & 0xfff
-                    oper0 = ArmImmOper((imm4<<12)|imm12)
-                    return COND_AL, None, 'hvc', (oper0,), None, 0
+        elif op == 0b0111010:
+            flags = 0
 
-                raise InvalidInstruction(
-                    mesg="branch_misc subsection 1",
-                    bytez=struct.pack("<HH", val, val2), va=va-4)
+            op1 = (val2>>8) & 7
+            op2 = val2 & 0xff
+            if op1:
+                opcode = INS_CPS
+                mnem = 'cps'
+
+                imod = (val2>>9) & 3    # enable = 0b10, disable = 0b11
+                m = (val2>>8) & 1   # change mode
+                aif = (val2>>5) & 7
+                mode = val2 & 0x1f
+
+                if (mode and m==0):
+                        raise Exception("CPS with invalid flags set:  UNPREDICTABLE (mode and not m)")
+
+                if ((imod & 2) and not (aif)) or \
+                    (not (imod & 2) and (aif)):
+                        raise Exception("CPS with invalid flags set:  UNPREDICTABLE imod enable but not a/i/f")
+
+                if not (imod or m):
+                    # hint
+                    mnem = "CPS Hint...  fix me"
+                    
+                if imod & 2:
+                    opers = [
+                        ArmCPSFlagsOper(aif)    # if mode is set...
+                    ]
+                    flags |= (IF_IE, IF_ID)[imod&1]
+
+                else:
+                    opers = []
+                if m:
+                    opers.append(ArmImmOper(mode))
+
+            else:
+                opcode, mnem = cpsh_mnems.get(op2, (INS_HINT, 'dbg'))
+                opers = []
+
+            return COND_AL, opcode, mnem, opers, flags, 0
+
+        #elif op == 0b0111011:
+        #    raise Exception("FIXME:  Misc control instrs p A6-235")  should be covered by "op & 0b111 == 0b011"
+
+        elif op == 0b0111100:
+            raise Exception("FIXME:  BXJ p A8-352")
+
+        #elif op == 0b0111101:   # subs PC, LR, #imm (see special case ERET above)...  unnecessary?
+        #    imm8 = val2 & 0xff
+        #    opers = (
+        #            ArmRegOper(REG_PC),
+        #            ArmRegOper(REG_LR),
+        #            ArmImmOper(imm8),
+        #            )
+        #    return COND_AL, None, 'sub', opers, IF_PSR_S, 0
+
+        elif op == 0b0111110:
+            Rd = (val2 >> 8) & 0xf
+            opers = (
+                    ArmRegOper(Rd),
+                    ArmPgmStatRegOper(PSR_CPSR),
+                    )
+            return COND_AL, None, 'mrs', opers, None, 0
+
+        elif op == 0b0111111:
+            Rd = (val2 >> 8) & 0xf
+            R = (val >> 4) & 1
+            opers = (
+                    ArmRegOper(Rd),
+                    ArmPgmStatRegOper(R),
+                    )
+
+            return COND_AL, None, 'mrs', opers, None, 0
+
+        elif op == 0b1111110:
+            if op1 == 0:
+                imm4 = val & 0xf
+                imm12 = val2 & 0xfff
+                oper0 = ArmImmOper((imm4<<12)|imm12)
+                return COND_AL, None, 'hvc', (oper0,), None, 0
+
+            raise InvalidInstruction(
+                mesg="branch_misc subsection 1",
+                bytez=struct.pack("<HH", val, val2), va=va-4)
 
 
-            elif op == 0b1111111:
-                if op1 == 0:
-                    imm4 = val & 0xf
-                    oper0 = ArmImmOper(imm4)
-                    return COND_AL, None, 'smc', (oper0,), None, 0
+        elif op == 0b1111111:
+            if op1 == 0:
+                imm4 = val & 0xf
+                oper0 = ArmImmOper(imm4)
+                return COND_AL, None, 'smc', (oper0,), None, 0
 
-                raise InvalidInstruction(
-                    mesg="branch_misc subsection 1",
-                    bytez=struct.pack("<HH", val, val2), va=va-4)
+            raise InvalidInstruction(
+                mesg="branch_misc subsection 1",
+                bytez=struct.pack("<HH", val, val2), va=va-4)
+
+        raise InvalidInstruction(
+            mesg="branch_misc subsection 3",
+            bytez=struct.pack("<H", val)+struct.pack("<H", val2), va=va-4)
 
 
 
@@ -439,7 +432,13 @@ def branch_misc(va, val, val2): # bl and misc control
 
     elif op1 == 0b010:
         if op == 0b1111111:
-            raise Exception("FIXME:  UDF (permanently undefined) p B9-1972")
+            flags = 0
+            imm4 = val & 0xf
+            imm12 = val2 & 0xfff
+            immval = (imm4<<12) | imm12
+            oper0 = ArmImmOper(immval)
+            return COND_AL, INS_UDF, 'udf', (oper0, ), flags, 0
+
         raise InvalidInstruction(
             mesg="branch_misc subsection 6",
             bytez=struct.pack("<H", val)+struct.pack("<H", val2), va=va-4)
@@ -473,9 +472,6 @@ def branch_misc(va, val, val2): # bl and misc control
 
         return COND_AL, opcode, mnem, (oper0, ), flags, 0
         
-
-
-    
     raise InvalidInstruction(
         mesg="branch_misc Branches and Miscellaneous Control: Failed to match",
         bytez=struct.pack("<H", val)+struct.pack("<H", val2), va=va-4)
@@ -2122,18 +2118,22 @@ thumb2_extension = [
     ('11111110',            (IENC_COPROC_SIMD,'coproc simd', coproc_simd_32,  IF_THUMB32)),
     ('11111111',            (IENC_ADVSIMD,'adv simd', adv_simd_32,        IF_THUMB32)),
 
-    # data-processing (modified immediate)
+    # data-processing (modified immediate) (branches mostly redirected from dp_mod_imm_32)
     ('11110000000',         (INS_AND, 'and',      dp_mod_imm_32,      IF_THUMB32)),  # tst if rd=1111 and s=1
     ('11110000001',         (INS_BIC, 'bic',      dp_mod_imm_32,      IF_THUMB32)),
     ('11110000010',         (INS_ORR, 'orr',      dp_mod_imm_32,      IF_THUMB32)),
     ('11110000011',         (INS_ORN, 'orn',      dp_mod_imm_32,      IF_THUMB32)),  # mvn if rn=1111
-    ('11110000110',         (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('11110000100',         (INS_EOR, 'eor',      dp_mod_imm_32,      IF_THUMB32)),  # teq if rd=1111 and s=1
+    ('11110000110',         (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('11110001000',         (INS_ADD, 'add',      dp_mod_imm_32,      IF_THUMB32)),  # cmn if rd=1111 and s=1
+    ('11110001001',         (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('11110001010',         (INS_ADC, 'adc',      dp_mod_imm_32,      IF_THUMB32)),
     ('11110001011',         (INS_SBC, 'sbc',      dp_mod_imm_32,      IF_THUMB32)),
+    ('11110001100',         (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('11110001101',         (INS_SUB, 'sub',      dp_mod_imm_32,      IF_THUMB32)),  # cmp if rd=1111 and s=1
     ('11110001110',         (INS_RSB, 'rsb',      dp_mod_imm_32,      IF_THUMB32)),
+    ('11110001111',         (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
+    ('1111001',             (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('11110100000',         (INS_AND, 'and',      dp_mod_imm_32,      IF_THUMB32)),  # tst if rd=1111 and s=1
     ('11110100001',         (INS_BIC, 'bic',      dp_mod_imm_32,      IF_THUMB32)),
     ('11110100010',         (INS_ORR, 'orr',      dp_mod_imm_32,      IF_THUMB32)),
@@ -2147,30 +2147,31 @@ thumb2_extension = [
 
     # data processing (plain binary immediate)
     ('1111001000',          (INS_ADD, 'add',      dp_bin_imm_32,      IF_THUMB32)),  # adr if rn=1111
-    ('1111001001',          (INS_MOVW, 'movw',     dp_bin_imm_32,      IF_THUMB32)),
+    ('1111001001',          (INS_MOVW, 'movw',    dp_bin_imm_32,      IF_THUMB32)),
     ('1111001010',          (INS_SUB, 'sub',      dp_bin_imm_32,      IF_THUMB32)),  # adr if rn=1111
-    ('1111001011',          (INS_MOVT, 'movt',     dp_bin_imm_32,      IF_THUMB32)),
-    ('11110011000',         (INS_SSAT, 'ssat',     dp_bin_imm_32,      IF_THUMB32)),
-    ('11110011001',         (INS_SSAT16,'ssat16',   dp_bin_imm_32,      IF_THUMB32)),
-    ('11110011010',         (INS_SBFX, 'sbfx',     dp_bin_imm_32,      IF_THUMB32)),
+    ('1111001011',          (INS_MOVT, 'movt',    dp_bin_imm_32,      IF_THUMB32)),
+    ('11110011000',         (INS_SSAT, 'ssat',    dp_bin_imm_32,      IF_THUMB32)),
+    ('11110011001',         (INS_SSAT16,'ssat16', dp_bin_imm_32,      IF_THUMB32)),
+    ('11110011010',         (INS_SBFX, 'sbfx',    dp_bin_imm_32,      IF_THUMB32)),
     ('11110011011',         (INS_BFI, 'bfi',      dp_bfi_imm_32,      IF_THUMB32)),  # bfc if rn=1111
-    ('11110011100',         (INS_USAT, 'usat',     dp_bin_imm_32,      IF_THUMB32)),
-    ('111100111010',        (INS_USAT, 'usat',     dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
-    ('111100111011',        (INS_USAT, 'usat',     dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
-    ('1111001111',          (INS_UBFX, 'ubfx',     ubfx_32,      IF_THUMB32)),
+    ('11110011100',         (INS_USAT, 'usat',    dp_bin_imm_32,      IF_THUMB32)),
+    ('111100111010',        (INS_USAT, 'usat',    dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
+    ('111100111011',        (INS_USAT, 'usat',    dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
+    ('1111001111',          (INS_UBFX, 'ubfx',    ubfx_32,            IF_THUMB32)),
+    ('1111010',             (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('1111011000',          (INS_ADD, 'add',      dp_bin_imm_32,      IF_THUMB32)),  # adr if rn=1111
-    ('1111011001',          (INS_MOVW, 'movw',     dp_bin_imm_32,      IF_THUMB32)),
+    ('1111011001',          (INS_MOVW, 'movw',    dp_bin_imm_32,      IF_THUMB32)),
     ('1111011010',          (INS_SUB, 'sub',      dp_bin_imm_32,      IF_THUMB32)),  # adr if rn=1111
-    ('1111011011',          (INS_MOVT, 'movt',     dp_bin_imm_32,      IF_THUMB32)),
-    ('11110111000',         (INS_SSAT, 'ssat',     dp_bin_imm_32,      IF_THUMB32)),
-    ('11110111001',         (INS_SSAT16,'ssat16',   dp_bin_imm_32,      IF_THUMB32)),
-    ('11110111010',         (INS_SBFX, 'sbfx',     dp_bin_imm_32,      IF_THUMB32)),
+    ('1111011011',          (INS_MOVT, 'movt',    dp_bin_imm_32,      IF_THUMB32)),
+    ('11110111000',         (INS_SSAT, 'ssat',    dp_bin_imm_32,      IF_THUMB32)),
+    ('11110111001',         (INS_SSAT16,'ssat16', dp_bin_imm_32,      IF_THUMB32)),
+    ('11110111010',         (INS_SBFX, 'sbfx',    dp_bin_imm_32,      IF_THUMB32)),
     ('11110111011',         (INS_BFI, 'bfi',      dp_bfi_imm_32,      IF_THUMB32)),  # bfc if rn=1111
-    ('11110111100',         (INS_USAT, 'usat',     dp_bin_imm_32,      IF_THUMB32)),
-    ('11110111101',         (INS_USAT, 'usat',     dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
-    ('11110111110',         (INS_UBFX, 'ubfx',     ubfx_32,      IF_THUMB32)),
-    ('11110111111',         (None, 'branchmisc', branch_misc,      IF_THUMB32)),    # necessary
-
+    ('11110111100',         (INS_USAT, 'usat',    dp_bin_imm_32,      IF_THUMB32)),
+    ('11110111101',         (INS_USAT, 'usat',    dp_bin_imm_32,      IF_THUMB32)),  # usat16 if val2=0000xxxx00xxxxxx
+    ('11110111110',         (INS_UBFX, 'ubfx',    ubfx_32,            IF_THUMB32)),
+    ('11110111111',         (None, 'branchmisc',  branch_misc,        IF_THUMB32)),    # necessary
+    
     # stores, loads, etc...
     ('111110000000',        (INS_STR, 'str', ldr_puw_32,        IF_B | IF_THUMB32)),
     ('111110000001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
@@ -2178,16 +2179,24 @@ thumb2_extension = [
     ('111110000011',        (INS_LDR,  'ldr',  ldr_puw_32,      IF_H | IF_THUMB32)),
     ('111110000100',        (INS_STR,  'str',  ldr_puw_32,      IF_THUMB32)),   # T4 encoding
     ('111110000101',        (INS_LDR,  'ldr',  ldr_puw_32,      IF_THUMB32)),   # T4 encoding
-    #('111110001001',        (INS_LDRB, 'ldrb', ldr_32,          IF_THUMB32)),
+    ('11111000011',         (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
+    ('111110001000',        (INS_STR, 'str', ldr_32,            IF_B | IF_THUMB32)),
     ('111110001001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
     ('111110001010',        (INS_STR, 'str', ldr_32,            IF_H | IF_THUMB32)),
     ('111110001011',        (INS_LDR, 'ldr', ldr_32,            IF_H | IF_THUMB32)),
     ('111110001100',        (INS_STR,  'str',  ldr_32,      IF_THUMB32)),
     ('111110001101',        (INS_LDR,  'ldr',  ldr_32,          IF_THUMB32)), # T3
-    ('111110001000',        (INS_STR, 'str', ldr_32,            IF_B | IF_THUMB32)),
+    ('111110001110',        (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
+    ('111110001111',        (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
+    ('111110010000',        (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('111110010001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
+    ('11111001001',         (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
+    ('1111100101',          (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
+    ('111110011000',        (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('111110011001',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
+    ('111110011010',        (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
     ('111110011011',        (None, 'ldrb_memhints32', ldrb_memhints_32,  IF_THUMB32)),
+    ('1111100111',          (INS_BLX, 'blx',      branch_misc,        IF_THUMB32)),    # necessary
 
     # data-processing (register)
     ('111110100',           (None, 'shift_or_extend', shift_or_ext_32,   IF_THUMB32)),
