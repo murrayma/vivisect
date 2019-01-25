@@ -313,6 +313,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             secbytes = elf.readAtRva(sec.sh_addr, size)
             ptr_count = 0
             for off in range(0, size, psize):
+                vw.makePointer(sec.sh_addr + off)
                 addr, = struct.unpack_from(pfmt, secbytes, off)
                 if addbase: addr += baseaddr
                 
