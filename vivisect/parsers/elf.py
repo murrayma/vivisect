@@ -296,10 +296,10 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
 
             ptr_count = 0
             for off in range(0, size, psize):
-                vw.makePointer(sh_addr + off)
                 addr, = struct.unpack_from(pfmt, secbytes, off)
                 if addbase: addr += baseaddr
                 
+                vw.makePointer(sh_addr + off, addr)
                 vw.makeName(addr, "init_function_%d" % ptr_count, filelocal=True)
                 vw.addXref(sh_addr + off, addr, REF_PTR)
                 vw.addEntryPoint(addr)
@@ -319,10 +319,10 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
 
             ptr_count = 0
             for off in range(0, size, psize):
-                vw.makePointer(sh_addr + off)
                 addr, = struct.unpack_from(pfmt, secbytes, off)
                 if addbase: addr += baseaddr
                 
+                vw.makePointer(sh_addr + off, addr)
                 vw.makeName(addr, "fini_function_%d" % ptr_count, filelocal=True)
                 vw.addXref(sec.sh_addr + off, addr, REF_PTR)
                 vw.addEntryPoint(addr)
