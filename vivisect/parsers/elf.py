@@ -335,7 +335,6 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                 pass
                 #print "########################.dynsym",s
 
->>>>>>> elf_improvements
         # If the section is really a string table, do it
         if sec.sh_type == Elf.SHT_STRTAB:
             makeStringTable(vw, sva, sva+size)
