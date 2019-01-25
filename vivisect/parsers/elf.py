@@ -5,6 +5,7 @@ import logging
 import Elf
 import vivisect
 import vivisect.parsers as v_parsers
+import envi.bits as e_bits
 
 from vivisect.const import *
 
@@ -148,14 +149,14 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         if pgm.p_type == Elf.PT_LOAD:
             if pgm.p_memsz == 0:
                 continue
-            if vw.verbose: vw.vprint('Loading: %s' % (repr(pgm)))
+            logger.info('Loading: %s', repr(pgm))
             bytez = elf.readAtOffset(pgm.p_offset, pgm.p_filesz)
             bytez += "\x00" * (pgm.p_memsz - pgm.p_filesz)
             pva = pgm.p_vaddr
             if addbase: pva += baseaddr
             vw.addMemoryMap(pva, pgm.p_flags & 0x7, fname, bytez) #FIXME perms
         else:
-            if vw.verbose: vw.vprint('Skipping: %s' % repr(pgm))
+            logger.info('Skipping: %s', repr(pgm))
 
     if len(pgms) == 0:
         # fall back to loading sections as best we can...
@@ -281,6 +282,59 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         if sname == ".interp":
             vw.makeString(sva)
 
+        elif sname == ".init":
+            vw.makeName(sva, "init_function", filelocal=True)
+            vw.addEntryPoint(sva)
+
+        elif sname == ".init_array":
+            # handle pseudo-fixups first: these pointers require base-addresses
+            psize = vw.getPointerSize()
+            pfmt = e_bits.le_fmt_chars[psize]   #FIXME: make Endian-aware (needs plumbing through ELF)
+            secbytes = elf.readAtRva(sec.sh_addr, size)
+            ptr_count = 0
+            for off in range(0, size, psize):
+                vw.makePointer(sec.sh_addr + off)
+                addr, = struct.unpack_from(pfmt, secbytes, off)
+                if addbase: addr += baseaddr
+                
+                vw.makeName(addr, "init_function_%d" % ptr_count, filelocal=True)
+                vw.addXref(sec.sh_addr + off, addr, REF_PTR)
+                vw.addEntryPoint(addr)
+                ptr_count += 1
+
+        elif sname == ".fini":
+            vw.makeName(sva, "fini_function", filelocal=True)
+            vw.addEntryPoint(sva)
+
+        elif sname == ".fini_array":
+            # handle pseudo-fixups first: these pointers require base-addresses
+            psize = vw.getPointerSize()
+            pfmt = e_bits.le_fmt_chars[psize]   #FIXME: make Endian-aware (needs plumbing through ELF)
+            secbytes = elf.readAtRva(sec.sh_addr, size)
+            ptr_count = 0
+            for off in range(0, size, psize):
+                addr, = struct.unpack_from(pfmt, secbytes, off)
+                if addbase: addr += baseaddr
+                
+                vw.makeName(addr, "fini_function_%d" % ptr_count, filelocal=True)
+                vw.addXref(sec.sh_addr + off, addr, REF_PTR)
+                vw.addEntryPoint(addr)
+                ptr_count += 1
+
+        elif sname == ".dynamic": # Imports
+            makeDynamicTable(vw, sva, sva+size)
+
+        # FIXME section names are optional, use dynamic info from .dynamic
+        elif sname == ".dynstr": # String table for dynamics
+            makeStringTable(vw, sva, sva+size)
+
+        elif sname == ".dynsym":
+            #print "LINK",sec.sh_link
+            for s in makeSymbolTable(vw, sva, sva+size):
+                pass
+                #print "########################.dynsym",s
+
+>>>>>>> elf_improvements
         # If the section is really a string table, do it
         if sec.sh_type == Elf.SHT_STRTAB:
             makeStringTable(vw, sva, sva+size)
