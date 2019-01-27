@@ -283,6 +283,7 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         self._parseDynSyms()
         self._parseSymbols()
         self._parseDynRelocs()
+        self._fillInDynSyms()
 
     def getRelocTypeName(self, rtype):
         '''
@@ -404,7 +405,6 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
 
         reloc = cls(bigend=self.bigend)
         relbytes = self.readAtRva(rva, relsz)
-        #print repr(relbytes)
         count, remain = divmod(relsz, len(reloc))
 
         relocs = reloc * count
@@ -412,9 +412,8 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
 
         for reloc in relocs:
             index = reloc.getSymTabIndex()
-            if index < len(self.dynamic_symbols):
-                sym = self.dynamic_symbols[index]
-                reloc.setName( sym.getName() )
+            sym = self._getDynSymByIdx(index)
+            reloc.setName( sym.getName() )
             self.relocs.append(reloc)
 
     def getBaseAddress(self):
@@ -525,17 +524,20 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
             if sec.sh_type != SHT_NOTE:
                 continue
 
-            notebytes =  self.readAtOffset(sec.sh_offset, sec.sh_size)
-            offset = 0
-            notebyteslen = len(notebytes)
-            while offset < notebyteslen:
-                note = vs_elf.ElfNote()
-                if notebyteslen - offset < len(note):
-                    #print ("\nNOTES section length mismatch!\n\t%s\n\tSection Bytes: %s\n\tStranded bytes: %s\n" % (sec, repr(notebytes), repr(notebytes[offset:])))
-                    break
+            try:
+                notebytes =  self.readAtOffset(sec.sh_offset, sec.sh_size)
+                offset = 0
+                notebyteslen = len(notebytes)
+                while offset < notebyteslen:
+                    note = vs_elf.ElfNote()
+                    if notebyteslen - offset < len(note):
+                        #print ("\nNOTES section length mismatch!\n\t%s\n\tSection Bytes: %s\n\tStranded bytes: %s\n" % (sec, repr(notebytes), repr(notebytes[offset:])))
+                        break
 
-                offset = note.vsParse(notebytes,offset=offset)
-                yield note
+                    offset = note.vsParse(notebytes,offset=offset)
+                    yield note
+            except Exception, e:
+                print("Elf.getNotes() Exception: %r" % e)
 
     def getPlatform(self):
         '''
@@ -738,15 +740,9 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
             dynbytes = dynbytes[len(dyn):]
 
     def _parseDynSyms(self):
-        # terminate SYMTAB (SYMTABSZ doesn't actually exist)
-        symtabva = self.dyns.get(DT_SYMTAB)
-        nextva = 0xffffffffffffffff
-        for val in self.dyns.values():
-            # FIXME: make a list of valid dynamic entries... would hate for a string offset or size to somehow cut this short on smaller bins based from 0
-            if val < nextva and val > symtabva:
-                nextva = val
-        self.dyns[HACK_SYMTABSZ] = nextva - symtabva
-
+        '''
+        setup Dynamic String Table, Dynamics section
+        '''
         # setup STRTAB for string recovery:
         strtab = self.dyns.get(DT_STRTAB) 
         strsz = self.dyns.get(DT_STRSZ)
@@ -758,25 +754,51 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
                 name = self.getDynStrtabString(dyn.d_value)
                 dyn.setName(name)
 
-        # process dynamic symbol table
-        symtabrva, symsz, symtabsz = self.getDynSymTabInfo()
-        if symtabrva != None:
-            symtab = self.readAtRva(symtabrva, symtabsz)
-
-            sym = self._cls_symbol(bigend=self.bigend)
-            count = symtabsz / symsz
-            syms = self.syms = sym * count #symsz
-            vstruct.VArray(elems=syms).vsParse(symtab,fast=True)
-
-            for sym in syms:
-                if not sym.st_name:
-                    continue
-                name = self.getDynStrtabString(sym.st_name)
-                sym.setName(name)
-
-            self.dynamic_symbols.extend(syms)
-
         return self.dyns
+
+    def _getDynSymByIdx(self, idx):
+        '''
+        Reach into the ELF and parse out one Dynamic Symbol.
+        This is used to assign names for Relocations as well as to fill in the 
+        dynamic_symbol table
+        '''
+        symtabrva, symsz, symtabsz = self.getDynSymTabInfo()
+
+        if symtabrva == None:
+            return None
+
+        # check if we've already looked this one up
+        dslen = len(self.dynamic_symbols)
+        if dslen > idx:
+            sym =  self.dynamic_symbols[idx]
+            if sym is not None:
+                return sym
+
+        # otherwise look it up and put it in dynamic_symbols
+        syment = self.readAtRva(symtabrva + (idx*symsz), symsz)
+        sym = self._cls_symbol(bigend=self.bigend)
+        sym.vsParse(syment)
+        name = self.getDynStrtabString(sym.st_name)
+        sym.setName(name)
+
+        # since we don't know in advance how many symbols there are, grow as necessary
+        if dslen <= idx:
+            self.dynamic_symbols.extend([None for x in range(idx-dslen+1)])
+
+        self.dynamic_symbols[idx] = sym
+
+        return sym
+
+    def _fillInDynSyms(self):
+        '''
+        Loading dynamic symbols as called upon by relocations seems to leave
+        gaps in dynamic_symbols.  Let's fill in the gaps.
+        '''
+        for idx, sym in enumerate(self.dynamic_symbols):
+            if sym is None:
+                sym = self._getDynSymByIdx(idx)
+                self.dynamic_symbols[idx] = sym
+
 
     def getDynStrTabInfo(self):
         return self.strtab
@@ -784,12 +806,14 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
     def getDynSymTabInfo(self):
         '''
         Returns Symbol Table information (as obtained through Dynamics only)
-        Assumes STRTAB immediately follows SYMTAB (to 
+        Assumes _parseDynRelocs has run (populating self.dynamic_symbols)
         returns (symtabva, symbolsz, symtabsz)
         '''
         symtabva = self.dyns.get(DT_SYMTAB)
         symsz = self.dyns.get(DT_SYMENT)
         symtabsz = self.dyns.get(HACK_SYMTABSZ)
+        if len(self.dynamic_symbols):
+            symtabsz = len(self.dynamic_symbols)
 
         return symtabva, symsz, symtabsz
 
