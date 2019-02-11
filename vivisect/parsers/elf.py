@@ -389,20 +389,24 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                         
 
             if arch == 'arm':
-                if name:
-                    if rtype == Elf.R_ARM_JUMP_SLOT:
-                        vw.makeImport(rlva, "*", dmglname)
+                if rtype == Elf.R_ARM_JUMP_SLOT:
+                    vw.makeImport(rlva, "*", name)
+                    vw.setComment(sva, dmglname)
 
-                    elif rtype == Elf.R_ARM_ABS32:      # Direct 32 bit  */
-                        vw.makeImport(rlva, "*", name)
-                        vw.setComment(rlva, dmglname)
+                elif rtype == Elf.R_ARM_ABS32:      # Direct 32 bit
+                    vw.makeImport(rlva, "*", name)
+                    vw.setComment(rlva, dmglname)
 
-                    elif rtype == Elf.R_ARM_GLOB_DAT:   # Create GOT entry */
-                        vw.makeImport(rlva, "*", name)
-                        vw.setComment(rlva, dmglname)
+                elif rtype == Elf.R_ARM_GLOB_DAT:   # Create GOT entry
+                    vw.makeImport(rlva, "*", name)
+                    vw.setComment(rlva, dmglname)
 
-                    else:
-                        vw.verbprint('unknown reloc type: %d %s (at %s)' % (rtype, name, hex(rlva)))
+                elif rtype == Elf.R_ARM_RELATIVE:   # Adjust locations for the rebasing
+                    vw.addRelocation(rlva, vivisect.RTYPE_BASERELOC)
+                    vw.setComment(rlva, dmglname)
+
+                else:
+                    vw.verbprint('unknown reloc type: %d %s (at %s)' % (rtype, name, hex(rlva)))
 
         except vivisect.InvalidLocation, e:
             print "NOTE",e
@@ -424,6 +428,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             try:
                 vw.addEntryPoint(sva)
                 vw.addExport(sva, EXP_FUNCTION, s.name, fname)
+                vw.setComment(sva, dmglname)
             except Exception, e:
                 vw.vprint('addExport Failure: (%s) %s' % (s.name, e))
 
@@ -431,6 +436,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             if vw.isValidPointer(sva):
                 try:
                     vw.addExport(sva, EXP_DATA, s.name, fname)
+                    vw.setComment(sva, dmglname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
@@ -442,7 +448,8 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             if vw.isValidPointer(sva):
                 try:
                     vw.addEntryPoint(sva)
-                    vw.addExport(sva, EXP_FUNCTION, dmglname, fname)
+                    vw.addExport(sva, EXP_FUNCTION, s.name, fname)
+                    vw.setComment(sva, dmglname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
@@ -453,7 +460,8 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             if addbase: sva += baseaddr
             if vw.isValidPointer(sva):
                 try:
-                    vw.addExport(sva, EXP_DATA, dmglname, fname)
+                    vw.addExport(sva, EXP_DATA, s.name, fname)
+                    vw.setComment(sva, dmglname)
                 except Exception, e:
                     vw.vprint('WARNING: %s' % e)
 
