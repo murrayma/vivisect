@@ -68,7 +68,7 @@ def loadPeIntoWorkspace(vw, pe, filename=None, baseaddr=None):
     mach = pe.IMAGE_NT_HEADERS.FileHeader.Machine
 
     arch = arch_names.get(mach)
-    if arch == None:
+    if arch is None:
         raise Exception("Machine %.4x is not supported for PE!" % mach )
 
     vw.setMeta('Architecture', arch)
@@ -87,7 +87,7 @@ def loadPeIntoWorkspace(vw, pe, filename=None, baseaddr=None):
 
     # Set ourselves up for extended windows binary analysis
 
-    if baseaddr == None:
+    if baseaddr is None:
         baseaddr = pe.IMAGE_NT_HEADERS.OptionalHeader.ImageBase
     entry = pe.IMAGE_NT_HEADERS.OptionalHeader.AddressOfEntryPoint + baseaddr
     entryrva = entry - baseaddr
@@ -103,7 +103,7 @@ def loadPeIntoWorkspace(vw, pe, filename=None, baseaddr=None):
     if dllname != None:
         fvivname = dllname
 
-    if fvivname == None:
+    if fvivname is None:
         fvivname = "pe_%.8x" % baseaddr
 
     fhash = "unknown hash"
@@ -312,7 +312,7 @@ def loadPeIntoWorkspace(vw, pe, filename=None, baseaddr=None):
 
         # map PE reloc to VIV reloc ( or dont... )
         vtype = relmap.get(rtype)
-        if vtype == None:
+        if vtype is None:
             continue
 
         vw.addRelocation(rva+baseaddr, vtype)
@@ -389,7 +389,7 @@ def loadPeIntoWorkspace(vw, pe, filename=None, baseaddr=None):
 
             try:
 
-                if vw.getName(symva) == None:
+                if vw.getName(symva) is None:
                     vw.makeName(symva, symname, filelocal=True)
 
             except Exception, e:
