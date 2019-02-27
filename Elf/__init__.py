@@ -275,7 +275,8 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         self.symbols_by_addr = {}
         self.dynamics = []
         self.dynamic_symbols = []
-        self.strtab = None
+        self.dynstrtabmeta = None
+        self.dynstrtab = []
 
         self._parsePheaders()
         self._parseSections()
@@ -283,7 +284,6 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         self._parseDynSyms()
         self._parseSymbols()
         self._parseDynRelocs()
-        self._fillInDynSyms()
 
     def getRelocTypeName(self, rtype):
         '''
@@ -400,6 +400,9 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
 
 
     def _doRelocs(self, rva, relsz, cls=None):
+        syms = self.getDynSyms()
+        symslen = len(syms)
+
         if cls == None:
             cls = self._cls_reloc
 
@@ -412,8 +415,10 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
 
         for reloc in relocs:
             index = reloc.getSymTabIndex()
-            sym = self._getDynSymByIdx(index)
-            reloc.setName( sym.getName() )
+            if index < symslen:
+                sym = syms[index]
+                if sym is not None:
+                    reloc.setName( sym.getName() )
             self.relocs.append(reloc)
 
     def getBaseAddress(self):
@@ -744,64 +749,29 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         setup Dynamic String Table, Dynamics section
         '''
         # setup STRTAB for string recovery:
-        strtab = self.dyns.get(DT_STRTAB) 
+        dynstrtab = self.dyns.get(DT_STRTAB) 
         strsz = self.dyns.get(DT_STRSZ)
-        if strtab != None and strsz != None:
-            self.setDynStrTab(strtab, strsz)
+        if dynstrtab != None and strsz != None:
+            self.setDynStrTab(dynstrtab, strsz)
 
         for dyn in self.dynamics:
             if dyn.d_tag in Elf32Dynamic.has_string:
                 name = self.getDynStrtabString(dyn.d_value)
                 dyn.setName(name)
 
+        symtabrva, symsz, symtabsz = self.getDynSymTabInfo()
+        for dsoff in xrange(0, symtabsz, symsz):
+            syment = self.readAtRva(symtabrva + dsoff, symsz)
+            sym = self._cls_symbol(bigend=self.bigend)
+            sym.vsParse(syment)
+            name = self.getDynStrtabString(sym.st_name)
+            sym.setName(name)
+            self.dynamic_symbols.append(sym)
+
         return self.dyns
 
-    def _getDynSymByIdx(self, idx):
-        '''
-        Reach into the ELF and parse out one Dynamic Symbol.
-        This is used to assign names for Relocations as well as to fill in the 
-        dynamic_symbol table
-        '''
-        symtabrva, symsz, symtabsz = self.getDynSymTabInfo()
-
-        if symtabrva == None:
-            return None
-
-        # check if we've already looked this one up
-        dslen = len(self.dynamic_symbols)
-        if dslen > idx:
-            sym =  self.dynamic_symbols[idx]
-            if sym is not None:
-                return sym
-
-        # otherwise look it up and put it in dynamic_symbols
-        syment = self.readAtRva(symtabrva + (idx*symsz), symsz)
-        sym = self._cls_symbol(bigend=self.bigend)
-        sym.vsParse(syment)
-        name = self.getDynStrtabString(sym.st_name)
-        sym.setName(name)
-
-        # since we don't know in advance how many symbols there are, grow as necessary
-        if dslen <= idx:
-            self.dynamic_symbols.extend([None for x in range(idx-dslen+1)])
-
-        self.dynamic_symbols[idx] = sym
-
-        return sym
-
-    def _fillInDynSyms(self):
-        '''
-        Loading dynamic symbols as called upon by relocations seems to leave
-        gaps in dynamic_symbols.  Let's fill in the gaps.
-        '''
-        for idx, sym in enumerate(self.dynamic_symbols):
-            if sym is None:
-                sym = self._getDynSymByIdx(idx)
-                self.dynamic_symbols[idx] = sym
-
-
     def getDynStrTabInfo(self):
-        return self.strtab
+        return self.dynstrtabmeta
 
     def getDynSymTabInfo(self):
         '''
@@ -811,29 +781,29 @@ class Elf(vs_elf.Elf32, vs_elf.Elf64):
         '''
         symtabva = self.dyns.get(DT_SYMTAB)
         symsz = self.dyns.get(DT_SYMENT)
-        symtabsz = self.dyns.get(HACK_SYMTABSZ)
-        if len(self.dynamic_symbols):
-            symtabsz = len(self.dynamic_symbols)
+        count = len(self.dynstrtab)  # cheat: there is a 1-to-1 relationship between symbols and strings in these tables
+        symtabsz = count * symsz
 
         return symtabva, symsz, symtabsz
 
     def setDynStrTab(self, rva, size):
-        if self.strtab != None:
-            curtab = self.strtab[0]
+        if self.dynstrtabmeta != None:
+            curtab = self.dynstrtabmeta[0]
             print('wtf?  multiple dynamic string tables?  old: 0x%x  new: 0x%x' % (curtab, rva))
 
-        self.strtab = (rva, size)
+        self.dynstrtabmeta = (rva, size)
+        self.dynstrtab = self.readAtRva(rva, size).split('\0')
 
     def getDynStrtabString(self, stroff):
         '''
         Returns a string starting at stroff
         '''
-        if self.strtab == None:
+        if self.dynstrtabmeta == None:
             print "no dyn strtabs!"
             return ''
 
-        strtab, strsz = self.strtab
-        strings = self.readAtRva(strtab, strsz)
+        dynstrtabva, strsz = self.dynstrtabmeta
+        strings = self.readAtRva(dynstrtabva, strsz)
         strend = strings.find('\0', stroff)
 
         return strings[stroff:strend]
