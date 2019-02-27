@@ -212,14 +212,14 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         if addbase:
             f_init += baseaddr
         vw.makeName(f_init, "init_function", filelocal=True)
-        vw.addEntryPoint(f_init)
+        new_functions.append(("init_function",f_init))
 
     f_fini = elf.dyns.get(Elf.DT_FINI)
     if f_fini != None:
         if addbase:
             f_fini += baseaddr
         vw.makeName(f_fini, "fini_function", filelocal=True)
-        vw.addEntryPoint(f_fini)
+        new_functions.append(("fini_function", f_fini))
 
     f_inita = elf.dyns.get(Elf.DT_INIT_ARRAY)
     if f_inita != None:
@@ -231,8 +231,10 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             fva = vw.readMemValue(iava, vw.psize)
             if addbase:
                 fva += baseaddr
-            vw.makeName(fva, "init_array_%d" % off, filelocal=True)
-            vw.addEntryPoint(fva)
+            idx = off / vw.psize
+            vw.makeName(iava, "init_array_%d" % idx, filelocal=True)
+            new_pointers.append((iava, fva))
+            new_functions.append(("init_array entry", fva))
 
     f_finia = elf.dyns.get(Elf.DT_FINI_ARRAY)
     if f_finia != None:
@@ -244,8 +246,9 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             fva = vw.readMemValue(fava, vw.psize)
             if addbase:
                 fva += baseaddr
-            vw.makeName(fva, "fini_array_%d" % off, filelocal=True)
-            vw.addEntryPoint(fva)
+            idx = off / vw.psize
+            vw.makeName(iava, "fini_array_%d" % idx, filelocal=True)
+            new_functions.append(("fini_array entry", fva))
 
     f_preinita = elf.dyns.get(Elf.DT_PREINIT_ARRAY)
     if f_preinita != None:
@@ -257,8 +260,9 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             fva = vw.readMemValue(piava, vw.psize)
             if addbase:
                 fva += baseaddr
-            vw.makeName(fva, "preinit_array_%d" % off, filelocal=True)
-            vw.addEntryPoint(fva)
+            idx = off / vw.psize
+            vw.makeName(iava, "preinit_array_%d" % idx, filelocal=True)
+            new_functions.append(("preinit_array entry", fva))
 
     # dynamic table
     phdr = elf.getDynHdr()    # file offset?
