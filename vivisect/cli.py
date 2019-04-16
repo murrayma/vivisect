@@ -2,9 +2,11 @@
 The vivisect CLI.
 """
 
+import sys
 import shlex
 import pprint
 import socket
+import traceback
 from getopt import getopt
 
 import vtrace
@@ -15,9 +17,7 @@ import vivisect.vector as viv_vector
 import vivisect.reports as viv_reports
 import vivisect.tools.graphutil as viv_graph
 
-# FIXME modular arch specific commands!
 import vivisect.symboliks as viv_symb
-#import vivisect.symboliks.archs.i386 as viv_sym_i386
 
 import vivisect.tools.fscope as v_t_fscope
 import vivisect.tools.graphutil as v_t_graph
@@ -145,12 +145,8 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
         import vivisect.symboliks.common as sym_common
         import vivisect.symboliks.effects as viv_sym_effects
         import vivisect.symboliks.analysis as vsym_analysis
-        import vivisect.symboliks.archs.i386 as viv_sym_i386
 
         symctx = vsym_analysis.getSymbolikAnalysisContext(self)
-
-        #xlate = viv_sym_i386.i386SymbolikTranslator(self)
-        #graph = viv_symboliks.getSymbolikGraph(self, fva, xlate)
 
         for emu, effects in symctx.getSymbolikPaths(fva):
 
@@ -226,7 +222,7 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
         '''
         search opcodes/function for a pattern
 
-        search [-f <funcva>] [options] <pattern>
+        searchopcodes [-f <funcva>] [options] <pattern>
         -f [fva]   - focus on one function
         -c         - search comments
         -o         - search operands
@@ -253,17 +249,15 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
         pattern = ' '.join(args)
         if len(pattern) == 0:
             self.vprint('you must specify a pattern')
-            return self.do_help('search')
+            return self.do_help('searchopcodes')
 
-        vw = self
-       
         # generate our interesting va list
         valist = []
         if options.funcva:
             # setup valist from function data
             try:
                 fva = int(args[0], 0)
-                graph = viv_graph.buildFunctionGraph(vw, fva)
+                graph = viv_graph.buildFunctionGraph(self, fva)
             except Exception, e:
                 self.vprint(repr(e))
                 return
@@ -272,87 +266,85 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
                 va = nva
                 endva = va + node.get('cbsize')
                 while va < endva:
-                    lva, lsz, ltype, ltinfo = vw.getLocation(va)
+                    lva, lsz, ltype, ltinfo = self.getLocation(va)
                     valist.append(va)
                     va += lsz
 
         else:
             # the whole workspace is our oyster
-            valist = [va for va, lvsz, ltype, ltinfo in vw.getLocations(LOC_OP)]
+            valist = [va for va, lvsz, ltype, ltinfo in self.getLocations(LOC_OP)]
 
         res = []
-        canv = e_canvas.StringMemoryCanvas(vw)
+        canv = e_canvas.StringMemoryCanvas(self)
 
-        try:
-            defaultSearchAll = True
-            for va in valist:
-                    addthis = False
-                    op = vw.parseOpcode(va)
-                    #print op
-                    # search comment
-                    if options.searchComments:
-                        defaultSearchAll = False
-                        cmt = vw.getComment(va)
-                        if cmt != None:
-                            #print "\t %r" % cmt
-                            if options.is_regex:
-                                if len(re.findall(pattern, cmt)):
-                                    addthis = True
+        defaultSearchAll = True
+        for va in valist:
+            try:
+                addthis = False
+                op = self.parseOpcode(va)
 
-                            else:
-                                if pattern in cmt:
-                                    addthis = True
+                # search comment
+                if options.searchComments:
+                    defaultSearchAll = False
+                    cmt = self.getComment(va)
+                    if cmt != None:
 
-                    # search operands
-                    if options.searchOperands:
-                        defaultSearchAll = False
-                        for opidx in range(len(op.opers)):
-                            # we're writing to a temp canvas, so clear it before each test
-                            canv.clearCanvas()
-                            oper = op.opers[opidx]
-                            oper.render(canv, op, opidx)
-                            operepr = canv.strval
-                            #print "\t %r" % operepr
-                            if options.is_regex:
-                                if len(re.findall(pattern, operepr)):
-                                    addthis = True
-
-                            else:
-                                if pattern in operepr:
-                                    addthis = True
-
-                                # if we're doing non-regex, let's test against real numbers (instead of converting to hex and back)
-                                numpattrn = pattern
-                                try:
-                                    numpattrn = int(numpattrn, 0)
-                                except:
-                                    pass
-
-                                #print "\t %r" % vars(oper).values()
-                                if numpattrn in vars(oper).values():
-                                    addthis = True
-
-                    # search full text
-                    if options.searchText or defaultSearchAll:
-                        canv.clearCanvas()
-                        op.render(canv)
-                        oprepr = canv.strval
-                        #print "\t %r" % oprepr
                         if options.is_regex:
-                            if len(re.findall(pattern, oprepr)):
+                            if len(re.findall(pattern, cmt)):
                                 addthis = True
 
                         else:
-                            if pattern in oprepr:
+                            if pattern in cmt:
                                 addthis = True
-                    
-                    # only want one listing of each va, no matter how many times it matches
-                    if addthis:
-                        res.append(va)
 
-        except Exception, e:
-            import sys
-            sys.excepthook(*sys.exc_info())
+                # search operands
+                if options.searchOperands:
+                    defaultSearchAll = False
+                    for opidx, oper in enumerate(op.opers):
+                        # we're writing to a temp canvas, so clear it before each test
+                        canv.clearCanvas()
+                        oper = op.opers[opidx]
+                        oper.render(canv, op, opidx)
+                        operepr = canv.strval
+
+                        if options.is_regex:
+                            if len(re.findall(pattern, operepr)):
+                                addthis = True
+
+                        else:
+                            if pattern in operepr:
+                                addthis = True
+
+                            # if we're doing non-regex, let's test against real numbers (instead of converting to hex and back)
+                            numpattrn = pattern
+                            try:
+                                numpattrn = int(numpattrn, 0)
+                            except:
+                                pass
+
+
+                            if numpattrn in vars(oper).values():
+                                addthis = True
+
+                # search full text
+                if options.searchText or defaultSearchAll:
+                    canv.clearCanvas()
+                    op.render(canv)
+                    oprepr = canv.strval
+
+                    if options.is_regex:
+                        if len(re.findall(pattern, oprepr)):
+                            addthis = True
+
+                    else:
+                        if pattern in oprepr:
+                            addthis = True
+                
+                # only want one listing of each va, no matter how many times it matches
+                if addthis:
+                    res.append(va)
+            except:
+                self.vprint(''.join(traceback.format_exception(*sys.exc_info())))
 
         if len(res) == 0:
             self.vprint('pattern not found: %s (%s)' % (pattern.encode('hex'), repr(pattern)))
@@ -361,7 +353,7 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
         # set the color for each finding
         color = options.markColor
         colormap = { va : color for va in res }
-        if vw._viv_gui != None:
+        if self._viv_gui != None:
             vqtevent('viv:colormap', colormap)
 
         self.vprint('matches for: %s (%s)' % (pattern.encode('hex'), repr(pattern)))
@@ -370,7 +362,7 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
             pname = e_mem.reprPerms(mperm)
             sname = self.reprPointer(va)
 
-            op = vw.parseOpcode(va)
+            op = self.parseOpcode(va)
             self.canvas.renderMemory(va, len(op))
             cmt = self.getComment(va)
             if cmt != None:
