@@ -99,7 +99,7 @@ class VQTreeModel(QtCore.QAbstractItemModel):
         self.beginInsertRows(pidx, i, i)
         node = parent.append(rowdata)
         self.endInsertRows()
-        self.layoutChanged.emit()
+        #self.layoutChanged.emit()
         return node
 
     def vqDelRow(self, rowdata, parent=None):
