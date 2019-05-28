@@ -162,8 +162,9 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             bytez = elf.readAtOffset(pgm.p_offset, pgm.p_filesz)
             bytez += "\x00" * (pgm.p_memsz - pgm.p_filesz)
             pva = pgm.p_vaddr
-            if addbase: pva += baseaddr
-            vw.addMemoryMap(pva, pgm.p_flags & 0x7, fname, bytez) #FIXME perms
+            if addbase:
+                pva += baseaddr
+            vw.addMemoryMap(pva, pgm.p_flags & 0x7, fname, bytez)  # FIXME perms
         else:
             logger.info('Skipping: %s', repr(pgm))
 
@@ -395,6 +396,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                 new_functions.append(("DynSym: STT_FUNC", sva))
                 vw.addExport(sva, EXP_FUNCTION, s.name, fname)
                 vw.setComment(sva, dmglname)
+                vw.addEntryPoint(sva)
             except Exception, e:
                 vw.vprint('addExport Failure: (%s) %s' % (s.name, e))
 
@@ -403,7 +405,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                 try:
                     vw.addExport(sva, EXP_DATA, s.name, fname)
                     vw.setComment(sva, dmglname)
-                except Exception, e:
+                except Exception as e:
                     vw.vprint('WARNING: %s' % e)
 
         elif stype == Elf.STT_HIOS:
@@ -416,7 +418,8 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                     new_functions.append(("DynSym: STT_HIOS", sva))
                     vw.addExport(sva, EXP_FUNCTION, s.name, fname)
                     vw.setComment(sva, dmglname)
-                except Exception, e:
+                    vw.addEntryPoint(sva)
+                except Exception as e:
                     vw.vprint('WARNING: %s' % e)
 
         elif stype == 14:# OMG WTF FUCK ALL THIS NONSENSE! FIXME
@@ -426,7 +429,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
                 try:
                     vw.addExport(sva, EXP_DATA, s.name, fname)
                     vw.setComment(sva, dmglname)
-                except Exception, e:
+                except Exception as e:
                     vw.vprint('WARNING: %s' % e)
 
         else:
