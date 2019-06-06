@@ -521,7 +521,7 @@ class SymbolikAnalysisContext:
             for coneff in newcons:
                 # bail if the constraint is dorked
                 if coneff.cons.isDiscrete():
-                    if not coneff.cons.prove():
+                    if not coneff.cons._solve():
                         print('TRIM: %s' % (str(coneff.cons),))
                         return False
                     continue
@@ -597,7 +597,7 @@ class SymbolikAnalysisContext:
                     if self.consolve:
                         # If any of the constraints are discrete and false we skip the path
                         [ c.reduce() for c in constraints ]
-                        discs = [ c.cons.prove() for c in constraints if c.cons.isDiscrete() ]
+                        discs = [ c.cons._solve() for c in constraints if c.cons.isDiscrete() ]
                         #print 'CONS',constraints
                         #print 'DISCS',discs
                         if not all( discs ): # emtpy discs is True...
