@@ -234,7 +234,7 @@ class WorkspaceEmulator:
         # If there is more than one branch target, we need a new code block
         if len(blist) > 1:
             for bva, bflags in blist:
-                if bva == None:
+                if bva is None:
                     logger.warn("Unresolved branch even WITH an emulator?")
                     continue
 
@@ -373,7 +373,7 @@ class WorkspaceEmulator:
                         logger.debug('runFunction failed: unsupported instruction: 0x%08x %s', e.op.va, e.op.mnem)
                         break
                     else:
-                        logger.debug('runFunction continuing after unsupported instruction: 0x%08x %s' % (e.op.va, e.op.mnem))
+                        logger.debug('runFunction continuing after unsupported instruction: 0x%08x %s', e.op.va, e.op.mnem)
                         self.setProgramCounter(e.op.va + e.op.size)
                 except Exception as e:
                     # traceback.print_exc()

@@ -937,11 +937,11 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         emu.setEmulationMonitor(wat)
         try:
             emu.runFunction(va, maxhit=1)
-        except Exception, e:
+        except Exception as e:
             logger.debug('%s ===== NOT CODE (exception): 0x%x  %r', __name__, va, e)
             #sys.excepthook(*sys.exc_info())
             return False
- 
+
         if wat.looksgood():
             return True
 
@@ -1092,7 +1092,6 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
                 if brdone.get(ref, False):
                     continue
                 if ref is not None and type(ref) in (int, long) and self.isValidPointer(ref):
-
                     self.addXref(va, ref, REF_PTR)
 
         return loc

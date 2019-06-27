@@ -239,7 +239,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         #       other than None, that is the new eip
         try:
             self.setMeta('forrealz', True)
-            x = None
+            newpc = None
             skip = False
         
             # IT block handling
@@ -264,14 +264,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                     raise envi.UnsupportedInstruction(self, op)
 
                 # executing opcode now...
-                x = meth(op)
+                newpc = meth(op)
 
             # returned None, so the instruction hasn't directly changed PC
-            if x == None:
+            if newpc == None:
                 pc = self.getProgramCounter()
-                x = pc+op.size
+                newpc = pc+op.size
 
-            self.setProgramCounter(x)
+            self.setProgramCounter(newpc)
         finally:
             self.setMeta('forrealz', False)
 
@@ -927,18 +927,12 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     i_ldrt = i_ldr
 
     def i_ldrex(self, op):
-        try:
-            self.mem_access_lock.acquire()
+        with self.mem_access_lock:
             return self.i_ldr(op)
-        finally:
-            self.mem_access_lock.release()
 
     def i_strex(self, op):
-        try:
-            self.mem_access_lock.acquire()
+        with self.mem_access_lock:
             return self.i_str(op)
-        finally:
-            self.mem_access_lock.release()
 
     def i_mov(self, op):
         val = self.getOperValue(op, 1)
@@ -1007,8 +1001,8 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     i_ite = i_it
     i_itt = i_it
     i_itee = i_it
-    i_itet =  i_it
-    i_itte =  i_it
+    i_itet = i_it
+    i_itte = i_it
     i_ittt = i_it
     i_iteee = i_it
     i_iteet = i_it
@@ -1028,7 +1022,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         mask <<= lsb
         val = self.getOperValue(op, 0) & ~mask
-        val |= (addit<<lsb)
+        val |= (addit << lsb)
 
         self.setOperValue(op, 0, val)
 
@@ -1038,11 +1032,10 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         mask = e_bits.b_masks[width] << lsb
         mask ^= 0xffffffff
 
-        val = self.getOperValue(op, 0) 
+        val = self.getOperValue(op, 0)
         val &= mask
 
         self.setOperValue(op, 0, val)
-
 
     def i_clz(self, op):
         oper = self.getOperValue(op, 1)
@@ -1075,7 +1068,6 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     i_strsh = i_str
     i_strsb = i_str
     i_strt = i_str
-
 
     def i_add(self, op):
         if len(op.opers) == 3:
@@ -1420,15 +1412,19 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         dsize = op.opers[0].tsize
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
-            imm5 = self.getOperValue(op, 2)
+            shval = self.getOperValue(op, 2) & 0xff
 
         else:
             src = self.getOperValue(op, 0)
-            imm5 = self.getOperValue(op, 1)
+            shval = self.getOperValue(op, 1) & 0xff
 
-        shift = (32, imm5)[bool(imm5)]
-        val = src >> shift
-        carry = (src >> (shift-1)) & 1
+        if shval:
+            val = src >> shval
+            carry = (src >> (shval-1)) & 1
+        else:
+            val = src
+            carry = 0
+
         self.setOperValue(op, 0, val)
 
         Sflag = op.iflags & IF_PSR_S
@@ -1442,20 +1438,23 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if len(op.opers) == 3:
             src = self.getOperValue(op, 1)
             srclen = op.opers[1].tsize
-            imm5 = self.getOperValue(op, 2)
+            shval = self.getOperValue(op, 2) & 0xff
 
         else:
             src = self.getOperValue(op, 0)
             srclen = op.opers[0].tsize
-            imm5 = self.getOperValue(op, 1)
+            shval = self.getOperValue(op, 1) & 0xff
 
-        shift = (32, imm5)[bool(imm5)]
-        if e_bits.is_signed(src, srclen):
-            val = (src >> shift) | top_bits_32[shift]
+        if shval:
+            if e_bits.is_signed(src, srclen):
+                val = (src >> shval) | top_bits_32[shval]
+            else:
+                val = (src >> shval)
+            carry = (src >> (shval-1)) & 1
         else:
-            val = (src >> shift)
+            val = src
+            carry = 0
 
-        carry = (src >> (shift-1)) & 1
         self.setOperValue(op, 0, val)
 
         Sflag = op.iflags & IF_PSR_S
