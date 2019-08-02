@@ -53,6 +53,7 @@ import vivisect.analysis.generic.emucode as v_emucode
 
 logger = logging.getLogger(__name__)
 
+
 def guid(size=16):
     return hexlify(os.urandom(size))
 
@@ -149,6 +150,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         self.addVaSet("Bookmarks", (("va", VASET_ADDRESS), ("Bookmark Name", VASET_STRING)))
         self.addVaSet('DynamicBranches', (('va', VASET_ADDRESS), ('opcode', VASET_STRING), ('bflags', VASET_INTEGER)))
         self.addVaSet('SwitchCases', (('va', VASET_ADDRESS), ('setup_va', VASET_ADDRESS), ('Cases', VASET_INTEGER)) )
+        self.addVaSet('PointersFromFile', (('va', VASET_ADDRESS), ('target', VASET_ADDRESS), ('file', VASET_STRING), ('comment', VASET_STRING), ))
 
     def verbprint(self, msg):
         if self.verbose:
@@ -434,6 +436,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         mod = self.loadModule(modname)
         self.amods[modname] = mod
         self.amodlist.append(modname)
+        logger.debug('Adding Analysis Module: %s', modname)
 
     def delAnalysisModule(self, modname):
         """
@@ -460,6 +463,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         mod = self.loadModule(modname)
         self.fmods[modname] = mod
         self.fmodlist.append(modname)
+        logger.debug('Adding Function Analysis Module: %s', modname)
 
     def delFuncAnalysisModule(self, modname):
         '''
@@ -752,19 +756,24 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         """
         return list(self.exports)
 
-    def addExport(self, va, etype, name, filename):
+    def addExport(self, va, etype, name, filename, makeuniq=False):
         """
         Add an already created export object.
+        
+        makeuniq allows Vivisect to append some number to make the name unique.
+        This behavior allows for colliding names (eg. different versions of a function)
+        to coexist in the same workspace.
         """
         rname = "%s.%s" % (filename,name)
 
         # check if it exists and is *not* what we're trying to make it
         curval = self.vaByName(rname)
 
-        if curval != None and curval != va:
+        if curval != None and curval != va and not makeuniq:
             # if we don't force it to make a uniq name, bail
             raise Exception("Duplicate Name: %s => 0x%x  (cur: 0x%x)" % (rname, va, curval))
 
+        rname = self.makeName(va, rname, makeuniq=makeuniq)
         self._fireEvent(VWE_ADDEXPORT, (va,etype,name,filename))
 
     def getExport(self, va):
@@ -1652,6 +1661,11 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         parsed out the pointers value, you may specify tova to speed things
         up.
         """
+        loctup = self.getLocation(va)
+        if loctup is not None:
+            logger.warn("0x%x: Attempting to make a Pointer where another location object exists (of type %r)", va, loctup[L_LTYPE])
+            return None
+
         psize = self.psize
 
         # Get and document the xrefs created for the new location
@@ -1751,9 +1765,9 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         and will not create one (use makeStructure).
         """
         s = vstruct.getStructure(vstructname)
-        if s == None:
+        if s is None:
             s = self.vsbuilder.buildVStruct(vstructname)
-        if s != None:
+        if s is not None:
             bytes = self.readMemory(va, len(s))
             s.vsParse(bytes)
         return s
@@ -2067,6 +2081,12 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         Set a readable name for the given location by va. There
         *must* be a Location defined for the VA before you may name
         it.  You may set a location's name to None to remove a name.
+
+        makeuniq allows Vivisect to append some number to make the name unique.
+        This behavior allows for colliding names (eg. different versions of a function)
+        to coexist in the same workspace.  
+
+        default behavior is to fail on duplicate (False).
         """
         if filelocal:
             segtup = self.getSegment(va)
@@ -2097,6 +2117,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
                 name = newname
 
         self._fireEvent(VWE_SETNAME, (va,name))
+        return name
 
     def saveWorkspace(self, fullsave=True):
 
