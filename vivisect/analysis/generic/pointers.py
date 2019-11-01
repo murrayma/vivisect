@@ -16,7 +16,7 @@ def analyze(vw):
 
     done = []
 
-    # Let's analyze and Relocations we know are pointers
+    # Let's analyze Relocations we know are pointers
     for rva, rtype in vw.reloc_by_va.items():
         if rtype != RTYPE_BASEPTR:
             continue
@@ -76,5 +76,6 @@ def analyze(vw):
 
         tgtname = vw.getName(tgt)
         if tgtname is not None:
-            logger.info('   name(0x%x): %r', tgt, tgtname)
-            vw.makeName(ptr, 'ptr_%s_%.8x' % (tgtname, ptr))
+            name = vw._addNamePrefix(tgtname, tgt, 'ptr', '_') + '_%.8x' % ptr
+            logger.info('   name(0x%x): %r  (%r)', tgt, tgtname, name)
+            vw.makeName(ptr, name)

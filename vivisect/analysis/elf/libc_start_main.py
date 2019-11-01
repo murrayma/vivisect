@@ -51,8 +51,14 @@ def analyze(vw):
         lcsm = '__libc_start_main_%.8x' % va
         if name in (lcsm, "*."+lcsm):
             for xfr, xto, xtype, xtinfo in vw.getXrefsTo(va):
-                logger.info("0x%x -> 0x%x", xfr, xto)
+                if xtype != vivisect.REF_CODE:
+                    continue
+
+                logger.info("0x%x -> 0x%x (%r)", xfr, xto, xtype)
                 funcva = vw.getFunction(xfr)
+                if funcva is None:
+                    continue
+
                 analyzeFunction(vw, funcva)
 
 
@@ -70,7 +76,6 @@ class AnalysisMonitor(viv_imp_monitor.AnalysisMonitor):
                 self.startmain = va
 
     def prehook(self, emu, op, starteip):
-        viv_imp_monitor.AnalysisMonitor.prehook(self, emu, op, starteip)
 
         if op.iflags & envi.IF_CALL:
             # it's a call, get the target
@@ -83,4 +88,4 @@ class AnalysisMonitor(viv_imp_monitor.AnalysisMonitor):
                 if tgt == self.startmain:
                     self.success = True
                     self.emu = emu
-                    emu.stop()
+                    emu.stopEmu()

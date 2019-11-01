@@ -18,6 +18,7 @@ def addAnalysisModules(vw):
 
     if fmt == 'pe':
 
+        vw.addAnalysisModule("vivisect.analysis.generic.entrypoints")
         vw.addAnalysisModule("vivisect.analysis.pe")
 
         if arch == 'i386':
@@ -77,6 +78,9 @@ def addAnalysisModules(vw):
 
     elif fmt in ('elf', 'cgc'): # ELF ########################################################
 
+        # elfplt wants to be run before generic.entrypoints.
+        vw.addAnalysisModule("vivisect.analysis.elf.elfplt")
+        vw.addAnalysisModule("vivisect.analysis.generic.entrypoints")
         vw.addAnalysisModule("vivisect.analysis.elf")
 
         if arch in ('i386', 'amd64'):
@@ -103,8 +107,6 @@ def addAnalysisModules(vw):
         vw.addAnalysisModule("vivisect.analysis.generic.pointertables")
         vw.addAnalysisModule("vivisect.analysis.generic.emucode")
 
-        # Get PLTs taken care of early
-        vw.addFuncAnalysisModule("vivisect.analysis.elf.elfplt")
         # Generic code block analysis
         vw.addFuncAnalysisModule("vivisect.analysis.generic.codeblocks")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.switchcase")
@@ -131,6 +133,7 @@ def addAnalysisModules(vw):
 
     elif fmt == 'macho': # MACH-O ###################################################
 
+        vw.addAnalysisModule("vivisect.analysis.generic.entrypoints")
         if arch == 'i386':
             viv_analysis_i386.addEntrySigs(vw)
             vw.addAnalysisModule("vivisect.analysis.i386.importcalls")
@@ -167,6 +170,7 @@ def addAnalysisModules(vw):
             vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
             vw.addAnalysisModule("vivisect.analysis.ppc.bootstrap")
 
+        vw.addAnalysisModule("vivisect.analysis.generic.entrypoints")
         vw.addAnalysisModule("vivisect.analysis.generic.funcentries")
         vw.addAnalysisModule("vivisect.analysis.generic.relocations")
         #vw.addAnalysisModule("vivisect.analysis.generic.pointertables")
@@ -188,6 +192,7 @@ def addAnalysisModules(vw):
             vw.addFuncAnalysisModule("vivisect.analysis.ppc.emulation")
             vw.addAnalysisModule("vivisect.analysis.ppc.bootstrap")
 
+        vw.addAnalysisModule("vivisect.analysis.generic.entrypoints")
         vw.addAnalysisModule("vivisect.analysis.generic.funcentries")
         vw.addAnalysisModule("vivisect.analysis.generic.relocations")
         #vw.addAnalysisModule("vivisect.analysis.generic.pointertables")

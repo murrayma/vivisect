@@ -157,10 +157,10 @@ class CodeFlowContext(object):
 
             try:
                 op = self._mem.parseOpcode(va, arch=arch)
-            except envi.InvalidInstruction, e:
+            except envi.InvalidInstruction as e:
                 print 'parseOpcode error at 0x%.8x (addCodeFlow(0x%x)): %s' % (va, startva, e)
-                continue 
-            except Exception, e:
+                continue
+            except Exception as e:
                 print 'parseOpcode error at 0x%.8x (addCodeFlow(0x%x)): %s' % (va, startva, e)
                 continue
 
@@ -175,7 +175,7 @@ class CodeFlowContext(object):
             while len(branches):
 
                 bva, bflags = branches.pop()
-                                
+
                 # look for dynamic branches (ie. branches which don't have a known target).  assume at least one branch
                 if bva == None:
                     self._cb_dynamic_branch(va, op, bflags, branches)
@@ -186,22 +186,18 @@ class CodeFlowContext(object):
                 try:
                     # Handle a table branch by adding more branches...
                     ptrfmt = ('<P', '>P')[self._mem.getEndian()]
+                    # most if not all of the work to construct jump tables is done in makeOpcode
                     if bflags & envi.BR_TABLE:
                         if self._cf_exptable:
                             ptrbase = bva
-                            bdest = self._mem.readMemoryFormat(ptrbase, ptrfmt)[0]
-                            tabdone = {}
-                            while self._mem.isValidPointer(bdest):
-
-                                if self._cb_branchtable(bva, ptrbase, bdest) == False:
+                            tabdone = set()
+                            for bdest in self._mem.iterJumpTable(ptrbase):
+                                if not self._cb_branchtable(bva, ptrbase, bdest):
                                     break
-
-                                if not tabdone.get(bdest):
-                                    tabdone[bdest] = True
+                                if bdest not in tabdone:
+                                    tabdone.add(bdest)
                                     branches.append((bdest, envi.BR_COND))
-
                                 ptrbase += self._mem.psize
-                                bdest = self._mem.readMemoryFormat(ptrbase, ptrfmt)[0]
                         continue
 
                     if bflags & envi.BR_DEREF:

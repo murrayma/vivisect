@@ -149,8 +149,10 @@ class VivEventDist(VivEventCore):
 
         VivEventCore._ve_fireEvent(self, event, edata)
 
+
 def ddict():
     return collections.defaultdict(dict)
+
 
 class VivWorkspaceCore(object, viv_impapi.ImportApi):
 
@@ -239,7 +241,7 @@ class VivWorkspaceCore(object, viv_impapi.ImportApi):
 
         # RTYPE_BASERELOC assumes the memory is already accurate (eg. PE's unless rebased)
 
-        if rtype in (RTYPE_BASEOFF, RTYPE_BASEPTR):
+        if rtype in REBASE_TYPES:
             # add imgbase and offset to pointer in memory
             # 'data' arg must be 'offset' number
             ptr = imgbase + data
@@ -410,8 +412,8 @@ class VivWorkspaceCore(object, viv_impapi.ImportApi):
 
     def _handleCOMMENT(self, einfo):
         va,comment = einfo
-        if comment == None:
-            self.comments.pop(va)
+        if comment is None:
+            self.comments.pop(va, None)
         else:
             self.comments[va] = comment
 
@@ -740,7 +742,7 @@ class VivCodeFlowContext(e_codeflow.CodeFlowContext):
             fmod = vw.fmods.get(fmname)
             try:
                 fmod.analyzeFunction(vw, fva)
-            except Exception, e:
+            except Exception as e:
                 if vw.verbose:
                     traceback.print_exc()
                 vw.verbprint("Function Analysis Exception for 0x%x   %s: %s" % (fva, fmod.__name__, e))
@@ -754,7 +756,7 @@ class VivCodeFlowContext(e_codeflow.CodeFlowContext):
             return
 
         fmeta = vw.getFunctionMetaDict(fva)
-        for lva in vw.getVaSetRows('NoReturnCalls'): 
+        for lva in vw.getVaSetRows('NoReturnCalls'):
             va = lva[0]
             ctup = vw.getCodeBlock(va)
             if ctup and fva == ctup[2] and vw.getFunctionMeta(fva, 'BlockCount', default=0) == 1:
@@ -768,6 +770,6 @@ class VivCodeFlowContext(e_codeflow.CodeFlowContext):
 
         if self._mem.getLocation(tableva) == None:
             self._mem.makePointer(tableva, tova=destva, follow=False)
-    
+
         return True
 

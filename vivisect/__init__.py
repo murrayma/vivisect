@@ -52,10 +52,12 @@ from vivisect.defconfig import *
 import vivisect.analysis.generic.emucode as v_emucode
 
 logger = logging.getLogger(__name__)
+STOP_LOCS = (LOC_STRING, LOC_UNI, LOC_STRUCT, LOC_CLSID, LOC_VFTABLE, LOC_IMPORT, LOC_PAD, LOC_NUMBER)
 
 
 def guid(size=16):
     return hexlify(os.urandom(size))
+
 
 class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
 
@@ -472,11 +474,10 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         Example:
             vw.delFuncAnalysisModule('mypkg.mymod')
         '''
-        if not self.fmods.has_key(modname):
-            raise Exception("Unknown Module in delAnalysisModule: %s" % modname)
         x = self.fmods.pop(modname, None)
-        if x != None:
-            self.fmodlist.remove(modname)
+        if x is None:
+            raise Exception("Unknown Module in delAnalysisModule: %s" % modname)
+        self.fmodlist.remove(modname)
 
     def createEventChannel(self):
         chanid = self.chanids.next()
@@ -639,6 +640,17 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
 
         return False
 
+    def processEntryPoints(self):
+        '''
+        Roll through EntryPoints and make them into functions (if not already)
+        '''
+        for eva in self.getEntryPoints():
+            if self.isFunction(eva):
+                continue
+            if not self.probeMemory(eva, 1, e_mem.MM_EXEC):
+                continue
+            self.makeFunction(eva)
+
     def analyze(self):
         """
         Call this to ask any available analysis modules
@@ -650,14 +662,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
             self.vprint('...analyzing exports.')
 
         starttime = time.time()
-        for eva in self.getEntryPoints():
-            if self.isFunction(eva):
-                continue
-            if not self.probeMemory(eva, 1, e_mem.MM_EXEC):
-                continue
-            self.makeFunction(eva)
-
-        # Now lets engage any extended analysis modules.  If any modules return
+        # Now lets engage any analysis modules.  If any modules return
         # true, they managed to change things and we should run again...
         for mname in self.amodlist:
             mod = self.amods.get(mname)
@@ -850,6 +855,8 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
                 loc = self.getLocation(va+count)
                 if loc is not None:
                     if loc[L_LTYPE] == LOC_STRING:
+                        if loc[L_VA] == va:
+                            return loc[L_SIZE]
                         return loc[L_VA] - (va + count) + loc[L_SIZE]
                     return -1
 
@@ -972,13 +979,92 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         off, b = self.getByteDef(va)
         if arch == envi.ARCH_DEFAULT:
             loctup = self.getLocation(va)
-            # XXX - in the case where we've set a location on what should be an 
+            # XXX - in the case where we've set a location on what should be an
             # opcode lets make sure L_LTYPE == LOC_OP if not lets reset L_TINFO = original arch param
             # so that at least parse opcode wont fail
-            if loctup != None and loctup[ L_TINFO ] and loctup[ L_LTYPE ] == LOC_OP:
-                arch = loctup[ L_TINFO ]
+            if loctup is not None and loctup[L_TINFO] and loctup[L_LTYPE] == LOC_OP:
+                arch = loctup[L_TINFO]
 
-        return self.imem_archs[ (arch & envi.ARCH_MASK) >> 16 ].archParseOpcode(b, off, va)
+        return self.imem_archs[(arch & envi.ARCH_MASK) >> 16].archParseOpcode(b, off, va)
+
+    def iterJumpTable(self, startva, step=None, maxiters=None):
+        if not step:
+            step = self.psize
+        iters = 0
+        ptrbase = startva
+        rdest = self.castPointer(ptrbase)
+        while self.isValidPointer(rdest) and self.analyzePointer(rdest) in (None, LOC_OP):
+            if self.analyzePointer(ptrbase) in STOP_LOCS:
+                break
+
+            yield rdest
+
+            ptrbase += step
+            if len(self.getXrefsTo(ptrbase)):
+                break
+
+            rdest = self.castPointer(ptrbase)
+
+            iters += 1
+            if maxiters is not None and iters >= maxiters:
+                break
+
+    def moveCodeBlock(self, cbva, newfva):
+        cb = self.getCodeBlock(cbva)
+
+        if cb is None:
+            return
+
+        if cb[CB_FUNCVA] == newfva:
+            return
+
+        self.delCodeBlock(cb)
+        self.addCodeBlock((cb[CB_VA], cb[CB_SIZE], newfva))
+
+    def splitJumpTable(self, callingVa, prevRefVa, newTablAddr):
+        '''
+        So we have the case where if we have two jump tables laid out consecutively in memory (let's
+        call them tables Foo and Bar, with Foo coming before Bar), and we see Foo first, we're going to
+        recognize Foo as being a giant table, with all of Bar overlapping with Foo
+
+        So we need to construct a list of now invalid references from prevRefVa, starting at newTablAddr
+        newTablAddr should point to the new jump table, and those new codeblock VAs should be removed from
+        the list of references that prevRefVa refs to (and delete the name)
+
+        We also need to check to see if the functions themselves line up (ie, do these two jump tables
+        even belong to the same function, or should we remove the code block from the function entirely?)
+        '''
+        # Due to how codeflow happens, we have no guarantee if these two adjacent jump tables are
+        # even in the same function
+        codeblocks = set()
+        curfva = self.getFunction(callingVa)
+        # collect all the entries for the new jump table
+        for cb in self.iterJumpTable(newTablAddr):
+            codeblocks.add(cb)
+            prevcb = self.getCodeBlock(cb)
+            if prevcb is None:
+                continue
+            # we may also have to break these codeblocks from the old function
+            # 1 -- new func is none, old func is none
+            #   * can't happen. if the codeblock is defined, we at least have an old function
+            # 2 -- new func is not none, old func is none
+            #   * Can't happen. see above
+            # 3 -- new func is none, old func is not none
+            #   * delete the codeblock. we've dropped into a new function that is different from the old
+            #     since how codeflow discover functions, we should have all the code blocks for function
+            # 4 -- neither are none
+            #   * moveCodeBlock -- that func will handle whether or not functions are the same
+            if curfva is not None:
+                self.moveCodeBlock(cb, curcb[CB_FUNCVA])
+            else:
+                self.delCodeBlock(prevcb[CB_VA])
+
+        # now delete those entries from the previous jump table
+        oldrefs = self.getXrefsFrom(prevRefVa)
+        todel = [xref for xref in self.getXrefsFrom(prevRefVa) if xref[1] in codeblocks]
+        for va in todel:
+            self.setComment(va[1], None)
+            self.delXref(va)
 
     def makeOpcode(self, va, op=None, arch=envi.ARCH_DEFAULT):
         """
@@ -1019,21 +1105,45 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
                 ptrbase = tova
                 rdest = self.castPointer(ptrbase)
 
-                i = 0
-                tabdone = {}
-                while self.isValidPointer(rdest):
+                # if there's already an Xref to this address from another jump table, we overshot
+                # the other table, and need to cut that one short, delete its Xrefs starting at this one
+                # and then let the rest of this function build the new jump table
+                # This jump table also may not be in the same function as the other jump table, so we need
+                # to remove those codeblocks (and child codeblocks) from this function
 
+                # at this point, rdest should be the first codeblock in the jumptable, so get all the xrefs to him
+                # (but skipping over the current jumptable base address we're looking at)
+                for xrfrom, xrto, rtype, rflags in self.getXrefsTo(rdest):
+                    if tova == xrfrom:
+                        continue
+
+                    refva, refsize, reftype, refinfo = self.getLocation(xrfrom)
+                    if reftype != vivisect.LOC_OP:
+                        continue
+                    # If we've already constructed this opcode location and made the xref to the new codeblock,
+                    # that should mean we've already made the jump table, so there should be no need to split this
+                    # jump table.
+                    if refva == op.va:
+                        continue
+                    refop = self.parseOpcode(refva)
+                    for refbase, refbflags in refop.getBranches():
+                        if refbflags & envi.BR_TABLE:
+                            self.splitJumpTable(va, refva, tova)
+
+                tabdone = {}
+                for i, rdest in enumerate(self.iterJumpTable(ptrbase)):
                     if not tabdone.get(rdest):
                         tabdone[rdest] = True
                         self.addXref(va, rdest, REF_CODE, envi.BR_COND)
                         if self.getName(rdest) is None:
                             self.makeName(rdest, "case%d_%.8x" % (i, rdest))
-
-                    ptrbase += self.psize
-                    if len(self.getXrefsTo(ptrbase)):
-                        break  # Another xref means not our table anymore
-                    i += 1
-                    rdest = self.castPointer(ptrbase)
+                    else:
+                        cmnt = self.getComment(rdest)
+                        if cmnt is None:
+                            self.setComment(rdest, "Other Case(s): %d" % i)
+                        else:
+                            cmnt += ", %d" % i
+                            self.setComment(rdest, cmnt)
 
                 # This must be second (len(xrefsto))
                 self.addXref(va, tova, REF_PTR, None)
@@ -1344,7 +1454,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
             ret = []
         return ret
 
-    def makeFunctionThunk(self, fva, thname):
+    def makeFunctionThunk(self, fva, thname, addVa=True):
         """
         Inform the workspace that a given function is considered a "thunk" to another.
         This allows the workspace to process argument inheritance and several other things.
@@ -1356,7 +1466,11 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         n = self.getName(fva)
 
         base = thname.split(".")[-1]
-        self.makeName(fva, "%s_%.8x" % (base,fva))
+        if addVa:
+            name = "%s_%.8x" % (base,fva)
+        else:
+            name = base
+        self.makeName(fva, name, makeuniq=True)
 
         api = self.getImpApi(thname)
         if api:
@@ -2521,6 +2635,56 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         Return the colormap dictionary for the given map name.
         """
         return self.colormaps.get(mapname)
+
+    def _getNameParts(self, name, va):
+        '''
+        Return the given name in three parts: 
+        fpart: filename, if applicable (for file-local names)
+        npart: base name
+        vapart: address, if tacked on the end
+
+        If any of these are not applicable, they will return None for that field.
+        '''
+        fpart = None
+        npart = name
+        vapart = None
+        fname = self.getFileByVa(va)
+        vastr = '_%.8x' % va
+
+        if name.startswith(fname + '.'):
+            fpart, npart = name.split('.', 1)
+        elif name.startswith('*.'):
+            skip, npart = name.split('.', 1)
+
+        if npart.endswith(vastr) and not npart == 'sub' + vastr:
+            npart, vapart = npart.rsplit('_', 1)
+
+        return fpart, npart, vapart
+
+
+    def _addNamePrefix(self, name, va, prefix, joinstr=''):
+        '''
+        Add a prefix to the given name paying attention to the filename prefix, and 
+        any VA suffix which may exist.
+
+        This is used by multiple analysis modules.
+        Uses _getNameParts.
+        '''
+        fpart, npart, vapart = self._getNameParts(name, va)
+        if fpart is None and vapart is None:
+            name = joinstr.join([prefix, npart])
+
+        elif vapart is None:
+            name = fpart + '.' + joinstr.join([prefix, npart])
+
+        elif fpart is None:
+            name = joinstr.join([prefix, npart])
+
+        else:
+            name = fpart + '.' + joinstr.join([prefix, npart]) + '_%s' % vapart
+        logger.debug('addNamePrefix: %r %r %r -> %r', fpart, npart, vapart, name)
+        return name
+
 
 ##########################################################
 #
