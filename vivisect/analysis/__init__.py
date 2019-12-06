@@ -48,6 +48,9 @@ def addAnalysisModules(vw):
         # run imports after emucode
         if arch == 'i386':
             vw.addAnalysisModule("vivisect.analysis.i386.importcalls")
+            vw.addAnalysisModule("vivisect.analysis.i386.golang")
+        elif arch == 'amd64':
+            vw.addAnalysisModule("vivisect.analysis.amd64.golang")
 
         vw.addFuncAnalysisModule("vivisect.analysis.generic.codeblocks")
         vw.addFuncAnalysisModule("vivisect.analysis.generic.switchcase")
