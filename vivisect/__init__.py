@@ -54,6 +54,8 @@ import vivisect.analysis.generic.emucode as v_emucode
 logger = logging.getLogger(__name__)
 STOP_LOCS = (LOC_STRING, LOC_UNI, LOC_STRUCT, LOC_CLSID, LOC_VFTABLE, LOC_IMPORT, LOC_PAD, LOC_NUMBER)
 
+sys.setrecursionlimit(5000)
+
 
 def guid(size=16):
     return hexlify(os.urandom(size))
@@ -151,7 +153,7 @@ class VivWorkspace(e_mem.MemoryObject, viv_base.VivWorkspaceCore):
         self.addVaSet("Emulation Anomalies", (("va", VASET_ADDRESS), ("Message", VASET_STRING)))
         self.addVaSet("Bookmarks", (("va", VASET_ADDRESS), ("Bookmark Name", VASET_STRING)))
         self.addVaSet('DynamicBranches', (('va', VASET_ADDRESS), ('opcode', VASET_STRING), ('bflags', VASET_INTEGER)))
-        self.addVaSet('SwitchCases', (('va', VASET_ADDRESS), ('setup_va', VASET_ADDRESS), ('Cases', VASET_INTEGER)) )
+        self.addVaSet('SwitchCases', (('jmp_va', vivisect.VASET_ADDRESS), ('setup_va', vivisect.VASET_ADDRESS), ('Cases', vivisect.VASET_INTEGER)))
         self.addVaSet('PointersFromFile', (('va', VASET_ADDRESS), ('target', VASET_ADDRESS), ('file', VASET_STRING), ('comment', VASET_STRING), ))
 
     def verbprint(self, msg):

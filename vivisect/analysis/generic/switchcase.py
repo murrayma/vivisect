@@ -9,9 +9,10 @@ import sys
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARN)
-#if not len(logger.handlers):
-#    logger.addHandler(logging.StreamHandler())
+#logger.setLevel(logging.WARN)
+logger.setLevel(logging.DEBUG)
+if not len(logger.handlers):
+    logger.addHandler(logging.StreamHandler())
 
 import envi
 import envi.archs.i386 as e_i386
@@ -28,7 +29,6 @@ from vivisect.symboliks.common import *
 from vivisect.tools.graphutil import PathForceQuitException
 
 
-
 '''
 this analysis module takes a two stage approach to identifying and wiring up switch cases.
 
@@ -43,15 +43,16 @@ the second phase actually wires up the switch case instance, providing new codef
 necessary, new codeblocks, and xrefs from the dynamic branch to the case handling code.  at the
 end, names are applied as appropriate.
 '''
+
 # FIXME: some cases set the non-index reg much higher up the chain, so we don't identify the case index
 # FIXME: make all switchcase analysis for a given function cohesive (ie. don't finish up with naming until the entire function has been analyzed).  this will break cohesion if we use the CLI to add switchcases, but so be it.
 # FIXME: overlapping case names...  doublecheck the naming algorithm.  ahh... different switch-cases colliding on handlers?  is this legit?  or is it because we don't stop correctly?
 # CHECK: are the algorithms for "stopping" correct?  currently getting 1 switch case for several cases in libc-32
 # TODO: regrange description of Symbolik Variables... normalize so "eax" and "eax+4" make sense.
-# FIXME: libc 64bit doesn't work at all.  why?
 # TODO: complete documentation
 MAX_INSTR_COUNT  = 10
-MAX_CASES   = 5000
+MAX_CASES   = 500
+CASE_FAILURE = 5000
 MIN_FUNC_INSTR_SIZE = 10
 
 
@@ -67,12 +68,11 @@ signed_fmts = (
     '<q',
     )
 
+
 class SymIdxNotFoundException(Exception):
     def __repr__(self):
         return "getSymIdx cannot determine the Index register"
 
-    def __str__(self):
-        return "getSymIdx cannot determine the Index register"
 
 class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
     '''
@@ -94,6 +94,10 @@ class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
         
     def getTrackInfo(self):
         return self._trackReads
+
+    def setupFunctionCall(self, fva, args=None):
+        logger.warn("setupFunctionCall: SKIPPING!")
+        pass
         
     def readSymMemory(self, symaddr, symsize, vals=None):
         '''
@@ -107,16 +111,16 @@ class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
         
         # check for a previous write first...
         symmem = self._sym_mem.get(addrval)
-        if symmem != None:
+        if symmem is not None:
             symaddr, symval = symmem
             self.track(self.getMeta('va'), symaddr, symval)
             return symval
 
         # If we have a workspace, check it for meaningful symbols etc...
-        if self._sym_vw != None:
+        if self._sym_vw is not None:
             # Make a special check for imports...
             loc = self._sym_vw.getLocation(addrval)
-            if loc != None:
+            if loc is not None:
                 lva, lsize, ltype, linfo = loc
                 if ltype == vivisect.LOC_IMPORT:
                     # return name of import
@@ -130,7 +134,7 @@ class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
                 else:
                     size = symsize
                     
-                if size in (1,2,4,8):
+                if size in (1, 2, 4, 8):
                     # return real number from memory
                     val, = self._sym_vw.readMemoryFormat(addrval, signed_fmts[size])
                     self.track(self.getMeta('va'), symaddr, val)
@@ -142,6 +146,7 @@ class TrackingSymbolikEmulator(vs_anal.SymbolikFunctionEmulator):
                 return symval
 
         return Mem(symaddr, symsize)
+
 
 def contains(symobj, subobj):
     '''
@@ -160,20 +165,21 @@ def contains(symobj, subobj):
         walkTree callback for determining presence within an AST
         '''
         symsolve = symobj.solve()
-        #print "==--==", repr(symobj), symsolve, ctx['compare']
+        # print "==--==", repr(symobj), symsolve, ctx['compare']
         if symsolve == ctx['compare']:
             ctx['contains'] = True
             ctx['path'] = tuple(path)
 
         return symobj
 
-    ctx = { 'compare'  : subobj.solve(),
-            'contains' : False,
-            'path'     : []
-          }
+    ctx = {'compare':   subobj.solve(),
+           'contains':  False,
+           'path':      []
+           }
 
     symobj.walkTree(_cb_contains, ctx)
     return ctx.get('contains'), ctx['path']
+
 
 def getMemTargets(symvar):
     # determine locations read from
@@ -181,7 +187,7 @@ def getMemTargets(symvar):
         '''
         walkTree callback for grabbing Var objects
         '''
-        logger.debug("... %r", symobj)
+        logger.debug("... memtgt: %r", symobj)
         if symobj.symtype == SYMT_MEM:
             tgt = symobj.kids[0]
             if tgt not in ctx:
@@ -191,13 +197,14 @@ def getMemTargets(symvar):
     symvar.walkTree(_cb_grab_mem, unks)
     return unks
 
+
 def getUnknowns(symvar):
     # determine unknown registers in this symbolik object
     def _cb_grab_vars(path, symobj, ctx):
         '''
         walkTree callback for grabbing Var objects
         '''
-        logging.debug("... %r", symobj)
+        logging.debug("... unk: %r", symobj)
         if symobj.symtype == SYMT_VAR:
             if symobj.name not in ctx:
                 ctx.append(symobj.name)
@@ -206,119 +213,6 @@ def getUnknowns(symvar):
     symvar.walkTree(_cb_grab_vars, unks)
     return unks
 
-
-"""
-# Command Line Analysis and Linkage of Switch Cases - Microsoft and Posix - taking arguments "count" and "offset"
-def makeSwitch(vw, jmpva, count, offset, funcva=None):
-    '''
-    Determine jmp targets's and wire codeblocks together at a switch case based on 
-    provided count and offset data.
-
-        count   - number of sequential switch cases this jmp handles (iterates)
-        offset  - offset from the start of the function 
-                    (eg. sometimes "index -= 25" on the way to jmpva)
-
-    algorithm goes a little like this:
-    * start at the dynamic branch (jmp reg)
-    * back up instruction at a time until we hit a CODE xref to or from that instruction, 
-            or we run out of instructions, or we cross a max-instruction threshold.
-            (this has been modified to use clodeblocks instead of single instructions)
-    * walk forward, evaluating the dynamic branch symbolikally, until we have only the 
-            switch/case index
-    * iterate "count" times through the switch case indexes starting from 0
-    * wire dynamic branch to next code snippits
-    * make sure codeblocks exist for any new code / trigger codeflow analysis
-    * name switches and cases
-
-
-    DIFFERENT TYPES OF SWITCH CASES:
-    * VS's multidimensional
-    * VS's single-dimension
-    * Posix single dimension
-    * Any of them with offset (EBX for Posix PIE, VS's base reg (typically 0x10000))
-
-    What we need:
-    * Resultant location for xrefs (iterative)
-    * Index symboliks (for Constraint checking, addition/subtraction)
-    * potentially, base va offset?  if only to identify the others.... but maybe not.
-
-    How do we get from jmpreg (which is a very limited scope symboliks) to full scope symboliks run (from funcva)?
-    * va effect comparison?
-
-    '''
-    special_vals = {}
-    archname = vw.getMeta("Architecture")
-
-    if funcva == None:
-        funcva = vw.getFunction(jmpva)
-
-    if funcva == None:
-        logger.error("ERROR getting function for jmpva 0x%x", jmpva)
-        return
-
-    if count > MAX_CASES:
-        logger.warn("too many switch cases during analysis: %d   limiting to %d", count, MAX_CASES)
-        count = MAX_CASES
-
-    # build opcode and check initial requirements
-    op = vw.parseOpcode(jmpva)
-
-    if not (op.iflags & envi.IF_BRANCH):    # basically, not isCall() is what we're after.  
-        return
-    if len(op.opers) != 1:
-        return
-
-    oper = op.opers[0]
-
-    # get jmp reg
-    rctx = vw.arch.archGetRegCtx()
-    reg = oper.reg
-    regname = rctx.getRegisterName(reg)
-
-    # fix up for PIE_ebx (POSIX Position Independent Exe)
-    # this requires that PIE_ebx be set up from previous analysis 
-    #   (see vivisect.analysis.i386.thunk_bx)
-    ebx = vw.getMeta("PIE_ebx")
-    if ebx and archname == 'i386':
-        if regname == 'ebx':
-            logger.warn("PIE_ebx but jmp ebx.  bailing!")
-            # is this even valid?  are we caring if they ditch ebx?  could be wrong.
-            return
-        special_vals['ebx'] = ebx
-        
-    oplist = [op]
-
-    # zero in on the details of the switch
-    found, satvals, rname, jmpreg, deref_ops, debug  = \
-            zero_in(vw, jmpva, oplist, special_vals)
-   
-    if not found:
-        logger.info("Switch Analysis failure, couldn't zero-in on constraints/values for dynamic branch")
-        return debug
-    
-    # iterate through switch cases
-    cases, memrefs, interval = \
-            iterCases(vw, satvals, jmpva, jmpreg, rname, count, special_vals) 
-
-    # should we analyze for derefs here too?  should that be part of the SysEmu?
-    logger.info("cases:       %s", repr(cases))
-    logger.info("deref ops:   %s", repr(deref_ops))
-    #logger.info("reads:       %s", repr(symemu._trackReads))
-
-    # the difference between success and failure...
-    if not len(cases):
-        logger.info("no cases found... doesn't look like a switch case.")
-        return
-    
-    # mark names and make appropriate xrefs
-    #FIXME: make all switchcase analysis for a given function cohesive.  this will break if we use the CLI to add switchcases, but so be it.
-    makeNames(vw, jmpva, offset, cases, deref_ops, memrefs, interval)
-
-    # store some metadata in a VaSet
-    vw.setVaSetRow('SwitchCases', (jmpva, oplist[0].va, len(cases)) )
-
-    vagc.analyzeFunction(vw, funcva)
-"""
 
 def peelIdxOffset(symobj):
     '''
@@ -354,49 +248,14 @@ def peelIdxOffset(symobj):
 
     return symobj, offset
 
-def analyzeFunction_old(vw, fva):
-    '''
-    Function analysis module.
-    This is inserted right after codeblock analysis
-    '''
-
-    lastdynlen = 0
-    dynbranches = vw.getVaSet('DynamicBranches')
-    
-    # because the VaSet is often updated during analysis, we have to check to see if there are new 
-    # dynamic branches to analyze.
-    while lastdynlen != len(dynbranches):
-        lastdynlen = len(dynbranches)
-        for jmpva, (none, oprepr, bflags) in dynbranches.items():
-            if bflags & envi.BR_PROC:   # skip calls
-                continue
-
-            funcva = vw.getFunction(jmpva)
-            if funcva != fva:
-                # jmp_indir is for the entire VivWorkspace.  
-                # we're just filtering to this function here.
-                # this should be checked again when codeblocks are allowed to 
-                #   be part of multiple functions.
-                continue
-
-            lower, upper, baseoff = determineCountOffset(vw, jmpva)
-            if None in (lower, ): 
-                logger.info("something odd in count/offset calculation... skipping 0x%x...", jmpva)
-                continue
-
-            count = (upper - lower) + 1
-            makeSwitch(vw, jmpva, count, baseoff, funcva=fva)
-
-        dynbranches = vw.getVaSet('DynamicBranches')
-
-
 def targetNewFunctions(vw, fva):
     '''
     scan through all direct calls in this function and force analysis of called functions
     if this is too cumbersome, we'll just do the first one, or any in the first codeblock
     '''
 
-    todo = [vw.getCodeBlock(fva)]
+    todo = list(vw.getFunctionBlocks(fva))
+    done = []
 
     while len(todo):
         cbva, cbsz, cbfva = todo.pop()
@@ -409,7 +268,7 @@ def targetNewFunctions(vw, fva):
                 cbva += 1
                 continue
 
-            for xrfr,xrto,xrt,xrflag in vw.getXrefsFrom(cbva):
+            for xrfr, xrto, xrt, xrflag in vw.getXrefsFrom(cbva):
                 if not (op.iflags & envi.IF_CALL):
                     continue
 
@@ -418,15 +277,19 @@ def targetNewFunctions(vw, fva):
                 if not vw.isValidPointer(tgtva):
                     continue
 
-                if vw.getFunction(tgtva) != None:
+                if vw.getFunction(tgtva) is not None:
                     continue
 
-                logger.warn('Making new function: 0x%x', tgtva)
+                if tgtva in done:
+                    continue
+                done.append(tgtva)
+
+                logger.warn('Making new function: 0x%x (from 0x%x)', tgtva, xrfr)
                 vw.makeFunction(tgtva)
 
             cbva += len(op)
 
-def analyzeFunction_new(vw, fva):
+def analyzeFunction(vw, fva):
     '''
     Function analysis module.
     This is inserted right after codeblock analysis
@@ -438,6 +301,9 @@ def analyzeFunction_new(vw, fva):
 
     lastdynlen = 0
     dynbranches = vw.getVaSet('DynamicBranches')
+    done = vw.getMeta('analyzedDynBranches')
+    if done is None:
+        done = []
     
     # because the VaSet is often updated during analysis, we have to check to see if there are new 
     # dynamic branches to analyze.
@@ -445,6 +311,13 @@ def analyzeFunction_new(vw, fva):
         lastdynlen = len(dynbranches)
         for jmpva, (none, oprepr, bflags) in dynbranches.items():
             if bflags & envi.BR_PROC:   # skip calls
+                continue
+
+            if jmpva in done:
+                continue
+            done.append(jmpva)
+
+            if vw.getVaSetRow('SwitchCases', jmpva) is not None:
                 continue
 
             funcva = vw.getFunction(jmpva)
@@ -469,14 +342,20 @@ def analyzeFunction_new(vw, fva):
                 inp = raw_input("PRESS ENTER TO CONTINUE...")
             '''
         dynbranches = vw.getVaSet('DynamicBranches')
+    vw.setMeta('analyzedDynBranches', done)
+    # FIXME: we need a better way to store changing lists/dicts, that don't show up in the UI.  VaSet would be great, but ugly
 
-def analyzeFunction_pass(vw, fva):
-    pass
 
+def makeSwitch(vw, jmpva):
+    '''
+    for use as Vivisect Analysis script (see below)
+    '''
+    if vw.getVaSetRow('SwitchCases', jmpva) is not None:
+        return
 
-analyzeFunction = analyzeFunction_new
-#analyzeFunction = analyzeFunction_old
-#analyzeFunction = analyzeFunction_pass
+    sc = SwitchCase(vw, jmpva)
+    sc.analyze()
+
 
 # for use as vivisect script
 if globals().get('vw'):
@@ -484,13 +363,9 @@ if globals().get('vw'):
     vw.verbose = True
 
     vw.vprint("Starting...")
-    jmpva = int(argv[1],16)
-    count = int(argv[2])
-    offset = 0
-    if len(argv) > 3:
-        offset = int(argv[3])
+    jmpva = int(argv[1], 16)
 
-    makeSwitch(vw, jmpva, count, offset)
+    makeSwitch(vw, jmpva)
 
     vw.vprint("Done")
     
@@ -548,14 +423,14 @@ def thunk_bx(emu, fname, symargs):
     rctx = vw.arch.archGetRegCtx()
     ebxval = emu.getMeta('calling_va')
     oploc = vw.getLocation(ebxval)
-    if oploc == None:
+    if oploc is None:
         ebxval += 5
     else:
         ebxval += oploc[L_SIZE]
 
     ebx = Const(ebxval, vw.psize)
     reg = rctx.getRealRegisterName('ebx')
-    logger.info("YAY!  Thunk_bx is being called! %s\t%s\t%s\t%s", emu, symargs, reg, ebx)
+    logger.debug("YAY!  Thunk_bx is being called! %s\t%s\t%s\t%s", emu, symargs, reg, ebx)
     emu.setSymVariable(reg, ebx)
 
 UNINIT_CASE_INDEX = -2
@@ -627,7 +502,7 @@ class SwitchCase:
         returns the Simple Symbolik state of the dynamic target of the branch/jmp
         this is the symbolik register at the start of the last codeblock.
         '''
-        if self.jmpregsymbx != None:
+        if self.jmpregsymbx is not None:
             return self.jmpregsymbx
 
         op = self.vw.parseOpcode(self.jmpva)
@@ -703,7 +578,7 @@ class SwitchCase:
         this allows the Symbolik Parts to be easily accessible from various parts of the algorithm without handing around
         a lot of state as function args.
         '''
-        if not next and self.cspath != None and self.aspath != None and self.fullpath != None:
+        if not next and self.cspath is not None and self.aspath is not None and self.fullpath is not None:
             return self.cspath, self.aspath, self.fullpath
         
         self.clearCache()
@@ -714,14 +589,14 @@ class SwitchCase:
 
         fva = vw.getFunction(jmpva)
         cb = vw.getCodeBlock(jmpva)
-        if cb == None:
+        if cb is None:
             raise Exception("Dynamic Branch is not currently part of a CodeBlock!")
         cbva, cbsz, cbfva = cb
 
-        if self._sgraph == None:
+        if self._sgraph is None:
             self._sgraph = sctx.getSymbolikGraph(fva)
 
-        if self._codepathgen == None:
+        if self._codepathgen is None:
             #self._codepathgen = viv_graph.getCodePathsTo(self._sgraph, cbva)
             pathGenFactory = viv_graph.PathGenerator(self._sgraph)
             self._codepathgen = pathGenFactory.getFuncCbRoutedPaths(fva, cbva, 1, timeout=20)
@@ -730,11 +605,11 @@ class SwitchCase:
         contextpath = self._codepath[:-1]
         analpath = self._codepath[-1:]
 
-        self.cspath = sctx.getSymbolikPaths(fva, graph=self._sgraph, paths=[contextpath]).next()
-        self.aspath = sctx.getSymbolikPaths(fva, graph=self._sgraph, paths=[analpath]).next()
+        self.cspath = sctx.getSymbolikPaths(fva, graph=self._sgraph, args=[], paths=[contextpath]).next()
+        self.aspath = sctx.getSymbolikPaths(fva, graph=self._sgraph, args=[], paths=[analpath]).next()
         if len(self.cspath[1]) == 0:
             self.cspath = self.aspath
-        self.fullpath = sctx.getSymbolikPaths(fva, graph=self._sgraph, paths=[self._codepath]).next()
+        self.fullpath = sctx.getSymbolikPaths(fva, graph=self._sgraph, args=[], paths=[self._codepath]).next()
 
 
         return self.cspath, self.aspath, self.fullpath
@@ -742,7 +617,7 @@ class SwitchCase:
     def getComplexIdx(self):
         smplIdx = self.getSymIdx()
 
-        (csemu,cseffs), asp, fullp = self.getSymbolikParts()
+        (csemu, cseffs), asp, fullp = self.getSymbolikParts()
         cplxIdx = csemu.getSymVariable(smplIdx)
         return cplxIdx
 
@@ -801,9 +676,6 @@ class SwitchCase:
 
         return retcons
 
-            
-
-
     def getBounds(self):
         '''
         Determine the lower index, the upper index, and the offset.
@@ -812,7 +684,7 @@ class SwitchCase:
         if None not in (self.lower, self.upper, self.baseoff):
             return self.lower, self.upper, self.baseoff
 
-        (csemu,cseffs), asp, fullp = self.getSymbolikParts()
+        (csemu, cseffs), asp, fullp = self.getSymbolikParts()
 
         lower = 0       # the smallest index used.  most often wants to be 0
         upper = None    # the largest index used.  max=MAX_CASES
@@ -820,13 +692,13 @@ class SwitchCase:
         baseoff = None
        
         try:
-            while lower == None or (lower == 0 and upper == None) or upper <= lower: # FIXME: this will fail badly when it fails.  make this dependent on the codepathgen
+            while lower is None or (lower == 0 and upper is None) or upper <= lower: # FIXME: this will fail badly when it fails.  make this dependent on the codepathgen
                 # get the index we'll be looking for in constraints
                 lower = 0           # the smallest index used.  most often wants to be 0
                 upper = None        # the largest index used.  max=MAX_CASES
 
                 if count != 0:
-                    (csemu,cseffs), asp, fullp = self.getSymbolikParts(next=True)
+                    (csemu, cseffs), asp, fullp = self.getSymbolikParts(next=True)
 
                 count += 1
 
@@ -873,13 +745,13 @@ class SwitchCase:
                         
                     elif stype == SYMT_CON_LT: # this is setting the upper bound
                         newupper = offset - 1
-                        if upper == None or newupper < upper and newupper > 0:
+                        if upper is None or newupper < upper and newupper > 0:
                             logger.info("==setting a upper bound:  %s -> %s", upper, newupper)
                             upper = newupper
                         
                     elif stype == SYMT_CON_LE: # this is setting the upper bound
                         newupper = offset
-                        if upper == None or newupper < upper and newupper > 0:
+                        if upper is None or newupper < upper and newupper > 0:
                             logger.info("==setting a upper bound:  %s -> %s", upper, newupper)
                             upper = newupper
 
@@ -889,9 +761,10 @@ class SwitchCase:
                 logger.info("Done.. %r %r ...\n" % (lower, upper))
         except StopIteration:
             pass
+
         # if upper is None:  we need to exercize upper until something doesn't make sense.  
         # we also need to make sure we don't analyze non-Switches.  
-        if upper == None:
+        if upper is None:
             upper = MAX_CASES
 
         if lower < baseoff:
@@ -907,6 +780,22 @@ class SwitchCase:
         return self.lower, self.upper, self.baseoff
 
     def makeSwitch(self):
+        '''
+        DIFFERENT TYPES OF SWITCH CASES:
+        * VS's multidimensional
+        * VS's single-dimension
+        * Posix single dimension
+        * Any of them with offset (EBX for Posix PIE, VS's base reg (typically 0x10000))
+
+        What we need:
+        * Resultant location for xrefs (iterative)
+        * Index symboliks (for Constraint checking, addition/subtraction)
+        * potentially, base va offset?  if only to identify the others.... but maybe not.
+
+        How do we get from jmpreg (which is a very limited scope symboliks) to full scope symboliks run (from funcva)?
+        * va effect comparison?
+        '''
+
         vw = self.vw
 
         # only support branching switch-cases (ie, not calls)
@@ -919,7 +808,7 @@ class SwitchCase:
             return
 
         funcva = self.vw.getFunction(self.jmpva)
-        if funcva == None:
+        if funcva is None:
             logger.error("ERROR getting function for jmpva 0x%x", self.jmpva)
             return
 
@@ -937,11 +826,15 @@ class SwitchCase:
             lower, upper, baseoff = self.getBounds()
             if None in (lower, ): 
                 logger.info("something odd in count/offset calculation...(%r,%r,%r) skipping 0x%x...", 
-                        lower, upper, baseoff, self.jmpva)
+                            lower, upper, baseoff, self.jmpva)
                 return
 
             count = upper - lower + 1
             if count > MAX_CASES:
+                if count > CASE_FAILURE:
+                    logger.warn("TOO many switch cases detected: %d.  FAILURE.  Skipping this dynamic branch", count)
+                    return
+                
                 logger.warn("too many switch cases during analysis: %d   limiting to %d", count, MAX_CASES)
                 count = MAX_CASES
 
@@ -960,7 +853,7 @@ class SwitchCase:
                     break
                 
                 tloc = vw.getLocation(addr)
-                if tloc != None and tloc[0] != addr:
+                if tloc is not None and tloc[0] != addr:
                     # pointing at something not right.  must be done.
                     logger.info("found overlapping location.  quitting.")
                     break
@@ -970,7 +863,7 @@ class SwitchCase:
                     # if there is an xref to this target from within this function, we're still ok... ish?
                     if len(xrefsto):
                         good = True
-                        for xrfr,xrto,xrt,xrtinfo in xrefsto:
+                        for xrfr, xrto, xrt, xrtinfo in xrefsto:
                             xrfrfunc = vw.getFunction(xrfr)
                             if xrfrfunc == funcva:
                                 continue
@@ -984,7 +877,7 @@ class SwitchCase:
                 
                 # this is a valid thing, we have locations...  match them up
                 caselist = cases.get(addr)
-                if caselist == None:
+                if caselist is None:
                     caselist = []
                     cases[addr] = caselist
                 caselist.append( idx )
@@ -992,7 +885,7 @@ class SwitchCase:
                 # make the connections
                 vw.addXref(self.jmpva, addr, vivisect.REF_CODE)
                 nloc = vw.getLocation(addr)
-                if nloc == None:
+                if nloc is None:
                     vw.makeCode(addr)
 
             # makeNames (done separately because some indexes may be combined)
@@ -1001,7 +894,7 @@ class SwitchCase:
             # store some metadata in a VaSet
             vw.setVaSetRow('SwitchCases', (self.jmpva, self.jmpva, count) )
 
-            if baseoff != None:
+            if baseoff is not None:
                 lower += baseoff
                 upper += baseoff
             
@@ -1020,11 +913,14 @@ class SwitchCase:
 
 
     def getDerefs(self):
+        '''
+        roll through effects and look for EFF_READMEM
+        '''
         derefs = []
 
         csp, asp, fullp = self.getSymbolikParts()
-        csemu,cseffs = csp
-        asemu,aseffs = asp
+        csemu, cseffs = csp
+        asemu, aseffs = asp
 
         # create a tracking emulator and populate with with current "csp" state
         semu = TrackingSymbolikEmulator(self.vw)
@@ -1033,7 +929,7 @@ class SwitchCase:
         symIdx = self.getSymIdx()
 
         # set our index to 0, to get the base of pointer/offset arrays
-        semu.setSymVariable(symIdx, Const(0,8))
+        semu.setSymVariable(symIdx, Const(0, 8))
 
         for eff in aseffs:
             startlen = len(semu.getTrackInfo())
@@ -1072,12 +968,12 @@ class SwitchCase:
         def _cb_mark_longpath(path, symobj, ctx):
             #logger.debug( ' PATH: %r\n SYMOBJ: %r\n CTX: %r\n' % (path, symobj, ctx))
             longpath = ctx.get('longpath')
-            if longpath == None:
+            if longpath is None:
                 ctx['longpath'] = list(path)
             elif len(path) > len(longpath):
                 ctx['longpath'] = list(path)
 
-        (csemu,cseff), aspath, fullpath = self.getSymbolikParts()
+        (csemu, cseff), aspath, fullpath = self.getSymbolikParts()
 
         #idx = self.getComplexIdx().update(csemu).reduce()
         idx = self.getComplexIdx().reduce()
@@ -1196,16 +1092,17 @@ Out[14]: o_add(Mem(o_add(o_add(Const(0x7ff38880000,8),o_mul(o_sextend(o_and(Var(
                 for count in range(upper-lower+1):
                     self.vw.makeNumber(addr + (sz*count), sz)
 
-
     def iterCases(self):
         '''
         Generator which yields the case index and the target address
         '''
         vw = self.vw
 
-        (csemu,cseffs), aspath, fullpath = self.getSymbolikParts()
+        (csemu, cseffs), aspath, fullpath = self.getSymbolikParts()
 
         symidx = self.getSymIdx()
+        logger.info('getSymIdx: %r', symidx)
+
         jmptgt = self.getSymTarget()
         lower, upper, offset = self.getBounds()
         logger.debug( " itercases: %r %r %r %r", symidx, lower, upper, offset)
@@ -1222,6 +1119,7 @@ Out[14]: o_add(Mem(o_add(o_add(Const(0x7ff38880000,8),o_mul(o_sextend(o_and(Var(
         for idx in range(lower-offset, upper-offset+1):
             symemu.setSymVariable(symidx, Const(idx, 8))
             workJmpTgt = jmptgt.update(emu=symemu)
+            logger.info(" itercases: workJmpTgt: %r", workJmpTgt)
             coderef = workJmpTgt.solve(emu=symemu, vals={symidx:idx})
             #coderef = jmptgt.update(emu=symemu)
             logger.debug(" itercases: %r, %r", idx, hex(coderef))
@@ -1263,7 +1161,7 @@ Out[14]: o_add(Mem(o_add(o_add(Const(0x7ff38880000,8),o_mul(o_sextend(o_and(Var(
             casename = "case_%s_%x" % (idxs, addr)
 
             curname = vw.getName(addr) 
-            if curname != None:
+            if curname is not None:
                 ## FIXME NOW!:   if already labeled, chances are good this is other cases in the same function.
                 ## either simply add the new outstrings to the current one or we need to keep track of what
                 ## calls each and with what switchcase/index info.  VaSet?  or do we want this to only expect
