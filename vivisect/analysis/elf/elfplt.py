@@ -22,8 +22,12 @@ def analyze(vw):
             continue
         analyzePLT(vw, sva, ssize)
 
+
 def analyzePLT(vw, ssva, ssize):
         # make code for every opcode in PLT
+        # secondarily, determine standard sizing
+        optrack = []
+
         sva = ssva
         nextseg = sva + ssize
         while sva < nextseg:
@@ -31,6 +35,8 @@ def analyzePLT(vw, ssva, ssize):
                 logger.info('making code: 0x%x', sva)
                 try:
                     vw.makeCode(sva)
+                    optrack.append((sva, vw.parseOpcode(sva)))
+
                 except Exception as e:
                     logger.warn('0x%x: exception: %r', sva, e)
 
@@ -43,9 +49,54 @@ def analyzePLT(vw, ssva, ssize):
                 logger.warn('makeCode(0x%x) failed to make a location (probably failed instruction decode)!  incrementing instruction pointer by 1 to continue PLT analysis <fingers crossed>', sva)
                 sva += 1    # FIXME: add architectural "PLT_INSTRUCTION_INCREMENT" or something like it
 
+        # determine PLT Entry Start and Size
+        pltsz = MAGIC_PLT_SIZE
+
+        dynbrs = []
+        for tva, op in optrack:
+            brs = op.getBranches()
+            if len(brs) != 1:
+                continue
+
+            # dynamic branches will return (None, ARCH_CONSTANT)
+            tgtva, ttype = brs[0]
+            if tgtva is None:
+                dynbrs.append((tva, op))
+
+            # RIP-relative PLT entries will return (GOT_VA, ARCH_CONSTANT | BR_DEREF)
+            elif ttype & envi.BR_DEREF:
+                # do we want to check that 
+                if not vw.isValidPointer(tgtva):
+                    continue
+
+                segment = vw.getSegment(tgtva)
+                if segment is None or "got" not in segment[vivisect.SEG_NAME]:
+                    continue
+
+                dynbrs.append((tva, op))
+
+        last = None
+        heuristics = {}
+        for idx, (tva, op) in enumerate(dynbrs):
+            if idx == 0:
+                last = tva
+                continue
+
+            tempsize = tva - last
+            last = tva
+
+            heuristics[tempsize] = heuristics.get(tempsize, 0) + 1
+
+        heurlist = [(count, size) for size, count in heuristics.items()]
+        heurlist.sort(reverse=True)
+        logger.debug("PLT HEURISTICS: %r", heurlist)
+
+        if len(heurlist):
+            pltsz = heurlist[0][1]
+        logger.debug("PLT ENTRY SIZE: 0x%x", pltsz)
 
         # scroll through arbitrary length functions and make functions
-        for sva in range(ssva, nextseg, MAGIC_PLT_SIZE):
+        for sva in range(ssva, nextseg, pltsz):
             logger.info('making PLT function: 0x%x', sva)
             vw.makeFunction(sva)
             analyzeFunction(vw, sva)
@@ -125,7 +176,7 @@ def analyzeFunction(vw, funcva):
         logger.info("PLT->PTR 0x%x: (0x%x)  -> 0x%x -> 0x%x (%r)" % (funcva, opval, tgtva, ptrva, ptrname))
         if vw.isValidPointer(ptrva):
             if funcname is None:
-                funcname = vw._addNamePrefix(ptrname, ptrva, 'ptr', '_')
+                funcname = vw._addNamePrefix(ptrname, ptrva, 'plt', '_')
 
     elif loctup[vivisect.L_LTYPE] != vivisect.LOC_IMPORT:
         logger.warn("0x%x: (0x%x)  %r != %r (%r)" % (funcva, opval, loctup[vivisect.L_LTYPE], vivisect.LOC_IMPORT, funcname))
