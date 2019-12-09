@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 
 # CPU state (memory, regs inc SPSRs and banked registers)
 # CPU mode  (User, FIQ, IRQ, supervisor, Abort, Undefined, System)
-# 
+#
 # instruction code
 # exception handler code
-# FIXME: SPSR handling is not certain.  
+# FIXME: SPSR handling is not certain. 
 
 # calling conventions
 class ArmArchitectureProcedureCall(envi.CallingConvention):
@@ -150,7 +150,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         self.mem_access_lock = threading.Lock()
 
         # FIXME: this should be None's, and added in for each real coproc... but this will work for now.
-        self.coprocs = [CoProcEmulator(x) for x in xrange(16)]       
+        self.coprocs = [CoProcEmulator(x) for x in xrange(16)]      
         self.int_handlers = [self.default_int_handler for x in range(100)]
 
         seglist = [ (0,0xffffffff) for x in xrange(6) ]
@@ -185,17 +185,17 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         self.setCPSR(flags)
 
     def getFlag(self, which):          # FIXME: CPSR?
-        #if (flags_reg == None):
+        #if (flags_reg is None):
         #    flags_reg = proc_modes[self.getProcMode()][5]
         #flags = self.getRegister(flags_reg)
         flags = self.getCPSR()
-        if flags == None:
+        if flags is None:
             raise envi.PDEUndefinedFlag(self)
         return bool(flags & which)
 
     def readMemValue(self, addr, size):
         bytes = self.readMemory(addr, size)
-        if bytes == None:
+        if bytes is None:
             return None
         if len(bytes) != size:
             raise Exception("Read Gave Wrong Length At 0x%.8x (va: 0x%.8x wanted %d got %d)" % (self.getProgramCounter(),addr, size, len(bytes)))
@@ -211,7 +211,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     def readMemSignedValue(self, addr, size):
         bytes = self.readMemory(addr, size)
-        if bytes == None:
+        if bytes is None:
             return None
         if len(bytes) != size:
             raise Exception("Read Gave Wrong Length At 0x%.8x (va: 0x%.8x wanted %d got %d)" % (self.getProgramCounter(),addr, size, len(bytes)))
@@ -241,7 +241,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setMeta('forrealz', True)
             newpc = None
             skip = False
-        
+       
             # IT block handling
             if self.itcount:
                 self.itcount -= 1
@@ -456,7 +456,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         * if carry_in == '1', then result == x-y with:
             overflow == '1' if signed overflow occurred during the subtraction
             carry_out == '1' if unsigned borrow did not occur during the subtraction, that is, if x >= y
-        
+       
         * if carry_in == '0', then result == x-y-1 with:
             overflow == '1' if signed overflow occurred during the subtraction
             carry_out == '1' if unsigned borrow did not occur during the subtraction, that is, if x > y.
@@ -486,7 +486,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         #print "ures:", ures, hex(ures), " sres:", sres, hex(sres), " result:", result, hex(result), " signed(result):", e_bits.signed(result, 4), hex(e_bits.signed(result, 4)), "  C/V:",newcarry, overflow
 
         if Sflag:
-            curmode = self.getProcMode() 
+            curmode = self.getProcMode()
             if rd == 15:
                 if(curmode != PM_sys and curmode != PM_usr):
                     self.setCPSR(self.getSPSR(curmode))
@@ -519,7 +519,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         overflow = (e_bits.signed(result, 4) != sres)
 
         if Sflag:
-            curmode = self.getProcMode() 
+            curmode = self.getProcMode()
             if rd == 15:
                 if(curmode != PM_sys and curmode != PM_usr):
                     self.setCPSR(self.getSPSR(curmode))
@@ -575,7 +575,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     def i_and(self, op):
         res = self.logicalAnd(op)
         self.setOperValue(op, 0, res)
-        
+       
     def i_orr(self, op):
         tsize = op.opers[0].tsize
         if len(op.opers) == 3:
@@ -593,7 +593,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, tsize))
             self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, tsize))
-        
+       
     def i_stm(self, op):
         if len(op.opers) == 2:
             srcreg = op.opers[0].reg
@@ -643,7 +643,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if updatereg:
             self.setRegister(srcreg,addr)
         #FIXME: add "shared memory" functionality?  prolly just in strex which will be handled in i_strex
-        # is the following necessary?  
+        # is the following necessary? 
         newpc = self.getRegister(REG_PC)    # check whether pc has changed
         if pc != newpc:
             return newpc
@@ -688,8 +688,8 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             flags = IF_DAIB_I
 
         pc = self.getRegister(REG_PC)       # store for later check
-        
-        # set up 
+       
+        # set up
         reglistoper = op.opers[1]
         count = reglistoper.getRegCount()
         size  = reglistoper.getRegSize()
@@ -709,7 +709,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if updatereg:
             self.setRegister(srcreg,addr)
         #FIXME: add "shared memory" functionality?  prolly just in ldrex which will be handled in i_ldrex
-        # is the following necessary?  
+        # is the following necessary? 
         newpc = self.getRegister(REG_PC)    # check whether pc has changed
         if pc != newpc:
             self.setThumbMode(newpc & 1)
@@ -754,7 +754,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         else:
             raise Exception("0x%x:  %r   Something went wrong... opers = %r " % (op.va, op, op.opers))
-            
+           
 
     def i_vstr(self, op):
         src = self.getOperValue(op, 1)
@@ -789,9 +789,9 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
             src1 = self.getOperValue(op, 0)
             src2 = self.getOperValue(op, 1)
-                
+               
             val = src2 - src1
-                
+               
             logger.debug("vcmpe %r %r  %r  %r", op, src1, src2, val)
             fpsrc = self.getRegister(REG_FPSCR)
 
@@ -820,7 +820,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if len(op.opers) == 3:
             for reg in range(regcnt):
                 #frac_bits = 64 - op.opers[2].val
-
+                # pA8_870
                 if op.simdflags & IFS_F32_S32:
                     pass
                 elif op.simdflags & IFS_F32_U32:
@@ -828,12 +828,47 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                 elif op.simdflags & IFS_S32_F32:
                     pass
                 elif op.simdflags & IFS_U32_F32:
+                    pass
+
+                # pA8_872
+                elif op.simdflags & IFS_U16_F32:
+                    pass
+                elif op.simdflags & IFS_S16_F32:
+                    pass
+                elif op.simdflags & IFS_U32_F32:
+                    pass
+                elif op.simdflags & IFS_S32_F32:
+                    pass
+                elif op.simdflags & IFS_U16_F64:
+                    pass
+                elif op.simdflags & IFS_S16_F64:
+                    pass
+                elif op.simdflags & IFS_U32_F64:
+                    pass
+                elif op.simdflags & IFS_S32_F64:
+                    pass
+
+                elif op.simdflags & IFS_F32_U16:
+                    pass                      
+                elif op.simdflags & IFS_F32_S16:
+                    pass
+                elif op.simdflags & IFS_F32_U32:
+                    pass
+                elif op.simdflags & IFS_F32_S32:
+                    pass
+                elif op.simdflags & IFS_F64_U16:
+                    pass
+                elif op.simdflags & IFS_F64_S16:
+                    pass
+                elif op.simdflags & IFS_F64_U32:
+                    pass
+                elif op.simdflags & IFS_F64_S32:
                     pass
 
         elif len(op.opers) == 2:
             for reg in range(regcnt):
                 #frac_bits = 64 - op.opers[1].val
-
+                # pA8_866
                 if op.simdflags & IFS_F32_S32:
                     pass
                 elif op.simdflags & IFS_F32_U32:
@@ -842,13 +877,36 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                     pass
                 elif op.simdflags & IFS_U32_F32:
                     pass
+
+                # pA8-868
                 elif op.simdflags & IFS_F64_S32:
                     pass
                 elif op.simdflags & IFS_F64_U32:
                     pass
+                elif op.simdflags & IFS_F32_S32:
+                    pass
+                elif op.simdflags & IFS_F32_U32:
+                    pass
+
                 elif op.simdflags & IFS_S32_F64:
                     pass
                 elif op.simdflags & IFS_U32_F64:
+                    pass
+                elif op.simdflags & IFS_S32_F32:
+                    pass
+                elif op.simdflags & IFS_U32_F32:
+                    pass
+
+                # pA8-874
+                elif op.simdflags & IFS_F64_F32:
+                    pass
+                elif op.simdflags & IFS_F32_F64:
+                    pass
+
+                # pA8-876
+                elif op.simdflags & IFS_F16_F32:
+                    pass
+                elif op.simdflags & IFS_F32_F16:
                     pass
         else:
             raise Exception("i_vcvt with strange number of opers: %r" % op.opers)
@@ -892,7 +950,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if updatereg:
             self.setRegister(srcreg,addr)
         #FIXME: add "shared memory" functionality?  prolly just in ldrex which will be handled in i_ldrex
-        # is t  he following necessary?  
+        # is t  he following necessary? 
         newpc = self.getRegister(REG_PC)    # check whether pc has changed
         if pc != newpc:
             self.setThumbMode(newpc & 1)
@@ -971,7 +1029,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             val = self.getOperValue(op, 1)
 
         self.setRegister(REG_FPSCR, val)
-            
+           
     def i_mrs(self, op):
         val = self.getAPSR()
         self.setOperValue(op, 0, val)
@@ -1012,7 +1070,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     i_ittet = i_it
     i_ittte = i_it
     i_itttt = i_it
-           
+          
     def i_bfi(self, op):
         lsb = self.getOperValue(op, 2)
         width = self.getOperValue(op, 3)
@@ -1076,14 +1134,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         else:
             src1 = self.getOperValue(op, 0)
             src2 = self.getOperValue(op, 1)
-        
+       
         dsize = op.opers[0].tsize
         reg = op.opers[0].reg
         Sflag = op.iflags & IF_PSR_S
 
         ures = self.AddWithCarry(src1, src2, 0, Sflag, rd=reg, tsize=dsize)
         self.setOperValue(op, 0, ures)
-        
+       
         #FIXME PDE and flags
         if src1 == None or src2 == None:
             self.undefFlags()
@@ -1097,14 +1155,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         else:
             src1 = self.getOperValue(op, 0)
             src2 = self.getOperValue(op, 1)
-        
+       
         #FIXME PDE and flags
-        if src1 == None or src2 == None:
+        if src1 is None or src2 is None:
             self.undefFlags()
             self.setOperValue(op, 0, None)
             return
 
-        
+       
         dsize = op.opers[0].tsize
         ssize = op.opers[1].tsize
         Carry = self.getFlag(PSR_C_bit)
@@ -1153,7 +1211,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         self.setFlag(PSR_N_bit, e_bits.is_signed(ures, dsize))
         self.setFlag(PSR_Z_bit, (0,1)[ures==0])
         self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, dsize))
-        
+       
     def i_teq(self, op):
         src1 = self.getOperValue(op, 0)
         src2 = self.getOperValue(op, 1)
@@ -1170,13 +1228,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             logger.critical('FIXME: TEQ - do different shift types for Carry flag')
             # FIXME: make the operands handle a ThumbExpandImm_C (for immediate) or Shift_C (for RegShiftImm), etc...
             self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(ures, dsize))
-        
+       
     def i_rsb(self, op):
         src1 = self.getOperValue(op, 1)
         src2 = self.getOperValue(op, 2)
-        
+       
         #FIXME PDE and flags
-        if src1 == None or src2 == None:
+        if src1 is None or src2 is None:
             self.undefFlags()
             self.setOperValue(op, 0, None)
             return
@@ -1196,7 +1254,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         src1 = self.getOperValue(op, 1)
         src2 = self.getOperValue(op, 2)
         #FIXME PDE and flags
-        if src1 == None or src2 == None:
+        if src1 is None or src2 is None:
             self.undefFlags()
             self.setOperValue(op, 0, None)
             return
@@ -1226,7 +1284,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         Sflag = op.iflags & IF_PSR_S
         mask = e_bits.u_maxes[op.opers[1].tsize]
 
-        if src1 == None or src2 == None:
+        if src1 is None or src2 is None:
             self.undefFlags()
             return None
 
@@ -1260,9 +1318,9 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         else:
             src1 = self.getOperValue(op, 0)
             src2 = self.getOperValue(op, 1)
-        
+       
         #FIXME PDE and flags
-        if src1 == None or src2 == None:
+        if src1 is None or src2 is None:
             self.undefFlags()
             self.setOperValue(op, 0, None)
             return
@@ -1274,7 +1332,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         self.setOperValue(op, 0, ures)
 
-        curmode = self.getProcMode() 
+        curmode = self.getProcMode()
         if op.iflags & IF_PSR_S:
             if op.opers[0].reg == 15:
                 if (curmode != PM_sys and curmode != PM_usr):
@@ -1616,7 +1674,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                 break
 
             loc = emu.vw.getLocation(va)
-            if loc != None:
+            if loc is not None:
                 logger.warn("Terminating TB at Location/Reference")
                 logger.warn("%x, %d, %x, %r", loc)
                 break
