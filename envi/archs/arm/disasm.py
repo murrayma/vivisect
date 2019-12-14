@@ -58,6 +58,7 @@ iencmul_codes = {
     binary("000000011001"): ("mul",   INS_MUL,  (0,4,2), IF_PSR_S),
     binary("000000101001"): ("mla",   INS_MLA,  (0,4,2,1), 0),
     binary("000000111001"): ("mla",   INS_MLA,  (0,4,2,1), IF_PSR_S),
+    binary("000001101001"): ("mls",   INS_MLS,  (0,4,2,1), 0),
     binary("000001001001"): ("umaal", INS_UMAAL,(1,0,4,2), 0),
     binary("000010001001"): ("umull", INS_UMULL,(1,0,4,2), 0),
     binary("000010011001"): ("umull", INS_UMULL,(1,0,4,2), IF_PSR_S),

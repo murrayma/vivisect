@@ -240,6 +240,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         try:
             self.setMeta('forrealz', True)
             newpc = None
+            startpc = self.getProgramCounter()
             skip = False
        
             # IT block handling
@@ -266,12 +267,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
                 # executing opcode now...
                 newpc = meth(op)
 
+            pc = self.getProgramCounter()
             # returned None, so the instruction hasn't directly changed PC
             if newpc == None:
-                pc = self.getProgramCounter()
                 newpc = pc+op.size
 
-            self.setProgramCounter(newpc)
+            # we don't want to trust the opcode emulator to know that it's updating PC
+            if pc == startpc:
+                self.setProgramCounter(newpc)
         finally:
             self.setMeta('forrealz', False)
 
@@ -1200,6 +1203,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     def i_svc(self, op):
         svc = self.getOperValue(op, 0)
         logger.warn("Service 0x%x called at 0x%x", svc, op.va)
+        self.interrupt(svc)
 
     def i_tst(self, op):
         src1 = self.getOperValue(op, 0)
@@ -1424,10 +1428,6 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setFlag(PSR_Z_bit, not val)
             self.setFlag(PSR_C_bit, e_bits.is_unsigned_carry(val, dsize))
             self.setFlag(PSR_V_bit, e_bits.is_signed_overflow(val, dsize))
-
-    def i_swi(self, op):
-        # this causes a software interrupt.  we need a good way to handle interrupts
-        self.interrupt(op.opers[0].val)
 
     def i_mul(self, op):
         dsize = op.opers[0].tsize
@@ -1736,8 +1736,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setFlag(PSR_N_bit, e_bits.is_signed(val, 4))
             self.setFlag(PSR_Z_bit, not val)
 
+    def i_mls(self, op):
+        src1 = self.getOperValue(op, 1)
+        src2 = self.getOperValue(op, 2)
+        src3 = self.getOperValue(op, 3)
 
+        val = src3 - (src1 * src2) & 0xffffffff
 
+        self.setOperValue(op, 0, val)
 
 
     def i_cps(self, op):
