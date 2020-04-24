@@ -13,6 +13,7 @@ def analyze(vw):
     """
     Do simple linear disassembly of the .plt section if present.
     """
+    return
     for sva,ssize,sname,sfname in vw.getSegments():
         if sname != ".plt":
             continue
@@ -35,11 +36,13 @@ def analyzeFunction(vw, funcva):
     '''
     seg = vw.getSegment(funcva)
     if seg == None:
+        logger.debug("no segment for funcva 0x%x", funcva)
         return
 
     segva, segsize, segname, segfname = seg
 
     if segname not in (".plt", ".plt.got"):
+        logger.debug("not in PLT segment for funcva 0x%x (%r)", funcva, segname)
         return
 
     
@@ -57,6 +60,7 @@ def analyzeFunction(vw, funcva):
         break
 
     if not branch:
+        logger.debug("no branch found for funcva 0x%x (after %r instrs)", funcva, cnt)
         return
 
     loctup = None
@@ -65,12 +69,16 @@ def analyzeFunction(vw, funcva):
     loctup = vw.getLocation(opval)
 
     if loctup == None:
+        logger.debug("no location found for funcva 0x%x (%r)", funcva, oper1)
         return
 
     if loctup[vivisect.L_LTYPE] != vivisect.LOC_IMPORT:
-        logger.debug("0x%x: " % funcva, loctup[vivisect.L_LTYPE], ' != ', vivisect.LOC_IMPORT)
+        logger.debug("0x%x: %r != %r (LOC_IMPORT)", funcva, loctup[vivisect.L_LTYPE], vivisect.LOC_IMPORT)
+
+    vw.addXref(op.va, opval, vivisect.REF_DATA)
+    tva = vw.readMemoryPtr(opval)
+    if vw.isValidPointer(tva):
+        vw.addXref(op.va, tva, vivisect.REF_CODE)
 
     gotname = vw.getName(opval)
-    tinfo = gotname
-    #vw.makeName(funcva, "plt_%s" % fname, filelocal=True)
-    vw.makeFunctionThunk(funcva, tinfo)
+    vw.makeFunctionThunk(funcva, gotname)

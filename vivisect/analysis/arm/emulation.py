@@ -1,4 +1,5 @@
 import sys
+import logging
 
 import vivisect
 import vivisect.impemu.monitor as viv_monitor
@@ -12,6 +13,9 @@ from envi.registers import RMETA_NMASK
 from envi.archs.arm.const import *
 
 from vivisect.const import *
+
+logger = logging.getLogger(__name__)
+
 
 class AnalysisMonitor(viv_monitor.AnalysisMonitor):
 
@@ -32,23 +36,25 @@ class AnalysisMonitor(viv_monitor.AnalysisMonitor):
             tmode = emu.getFlag(PSR_T_bit)
             self.last_tmode = tmode
             #if self.verbose: print( "tmode: %x    emu:  0x%x   flags: 0x%x \t %r" % (tmode, starteip, op.iflags, op))
-            #if op == self.badop:
             if op in self.badops:
+                emu.stopEmu()
                 raise Exception("Hit known BADOP at 0x%.8x %s (fva: 0x%x)" % (starteip, repr(op), self.fva))
 
             viv_monitor.AnalysisMonitor.prehook(self, emu, op, starteip)
 
             loctup = emu.vw.getLocation(starteip)
-            if loctup == None:
+            if loctup is None:
                 # do we want to hand this off to makeCode?
-                emu.vw.addLocation(starteip, len(op), vivisect.LOC_OP, op.iflags)
+                #print "emulation: prehook: new LOC_OP  fva: 0x%x     starteip: 0x%x  flags: 0x%x" % (self.fva, starteip, op.iflags)
+                arch = (envi.ARCH_ARMV7, envi.ARCH_THUMB)[(starteip & 1) | tmode]
+                emu.vw.makeCode(starteip & -2, arch=arch)
 
             elif loctup[2] != LOC_OP:
-                if self.verbose: print("ARG! emulation found opcode in an existing NON-OPCODE location  (0x%x):  0x%x: %s" % (loctup[0], op.va, op))
+                logger.info("ARG! emulation found opcode in an existing NON-OPCODE location  (0x%x):  0x%x: %s", loctup[0], op.va, op)
                 emu.stopEmu()
 
             elif loctup[0] != starteip:
-                if self.verbose: print("ARG! emulation found opcode in a location at the wrong address (0x%x):  0x%x: %s" % (loctup[0], op.va, op))
+                logger.info("ARG! emulation found opcode in a location at the wrong address (0x%x):  0x%x: %s", loctup[0], op.va, op)
                 emu.stopEmu()
 
             if op.iflags & envi.IF_RET:
@@ -79,7 +85,7 @@ class AnalysisMonitor(viv_monitor.AnalysisMonitor):
             elif op.opcode == INS_BX:
                 if starteip - self.last_lr_pc <= 4:
                     # this is a call.  the compiler updated lr
-                    if self.verbose: print("CALL by mov lr, pc; bx <foo> at 0x%x" % starteip)
+                    logger.info("CALL by mov lr, pc; bx <foo> at 0x%x", starteip)
                     ### DO SOMETHING??  identify new function like emucode.
 
             elif op.opcode == INS_ADD and op.opers[0].reg == REG_PC:
@@ -108,18 +114,20 @@ class AnalysisMonitor(viv_monitor.AnalysisMonitor):
                     #if self.verbose: print("BRANCH: ", hex(tgt), hex(op.va), hex(op.va))
 
                     if tgt == op.va:
-                        if self.verbose: print("+++++++++++++++ infinite loop +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+                        logger.info("0x%x: +++++++++++++++ infinite loop +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++", op.va)
                         if op.va not in self.infloops:
                             self.infloops.append(op.va)
+                            if 'InfiniteLoops' not in vw.getVaSetNames():
+                                vw.addVaSet('InfiniteLoops', (('va', vivisect.VASET_ADDRESS, 'function', vivisect.VASET_STRING)))
+                            self.vw.setVaSetRow('InfiniteLoops', (op.va, self.fva))
 
                 except Exception, e:
                     # FIXME: make raise Exception?
-                    print("0x%x: ERROR: %s" % (op.va, e))
+                    logger.info("0x%x: (%r) ERROR: %s",op.va, op, e)
 
         except Exception, e:
             # FIXME: make raise Exception?
-            print("0x%x: (%r)  ERROR: %s" % (op.va, op, e))
-            sys.excepthook(*sys.exc_info())
+            logger.exception("0x%x: (%r)  ERROR: %s", op.va, op, e)
 
 
     def posthook(self, emu, op, starteip):
@@ -175,27 +183,27 @@ def analyzeFunction(vw, fva):
     emu.setEmulationMonitor(emumon)
 
     loc = vw.getLocation(fva)
-    if loc != None:
+    if loc is not None:
         lva, lsz, lt, lti = loc
         if lt == LOC_OP:
             if (lti & envi.ARCH_MASK) != envi.ARCH_ARMV7:
                 emu.setFlag(PSR_T_bit, 1)
     else:
-        print("NO LOCATION at FVA: 0x%x" % fva)
+        logger.warn("NO LOCATION at FVA: 0x%x", fva)
 
     emu.runFunction(fva, maxhit=1)
 
     # Do we already have API info in meta?
     # NOTE: do *not* use getFunctionApi here, it will make one!
     api = vw.getFunctionMeta(fva, 'api')
-    if api == None:
+    if api is None:
         api = buildFunctionApi(vw, fva, emu, emumon)
 
     rettype,retname,callconv,callname,callargs = api
 
     argc = len(callargs)
     cc = emu.getCallingConvention(callconv)
-    if cc == None:
+    if cc is None:
         return
 
     stcount = cc.getNumStackArgs(emu, argc)
@@ -224,7 +232,7 @@ def analyzeTB(emu, op, starteip, amon):
     ######################### FIXME: ADD THIS TO getBranches(emu)
     ### DEBUGGING
     #raw_input("\n\n\nPRESS ENTER TO START TB: 0x%x" % op.va)
-    if emu.vw.verbose:  print("\n\nTB at 0x%x" % starteip)
+    logger.debug("\n\nTB at 0x%x", starteip)
     tsize = op.opers[0].tsize
     tbl = []
     basereg = op.opers[0].base_reg
@@ -233,36 +241,35 @@ def analyzeTB(emu, op, starteip, amon):
     else:
         base = op.opers[0].va
 
-    if emu.vw.verbose:  print("\nbase: 0x%x" % base)
+    logger.debug("\nbase: 0x%x", base)
     val0 = emu.readMemValue(base, tsize)
 
     if val0 > 0x100 + base:
-        print("ummmm.. Houston we got a problem.  first option is a long ways beyond BASE")
+        logger.debug("ummmm.. Houston we got a problem.  first option is a long ways beyond BASE")
 
     va = base
     while va < base + val0:
         nextoff = emu.readMemValue(va, tsize) * 2
-        if emu.vw.verbose:  print("0x%x: -> 0x%x" % (va, nextoff + base))
+        logger.debug("0x%x: -> 0x%x", va, nextoff + base)
         if nextoff == 0:
-            if emu.vw.verbose:  print("Terminating TB at 0-offset")
+            logging.debug("Terminating TB at 0-offset")
             break
 
         if nextoff > 0x500:
-            if emu.vw.verbose:  print("Terminating TB at LARGE - offset  (may be too restrictive): 0x%x" % nextoff)
+            logging.debug("Terminating TB at LARGE - offset  (may be too restrictive): 0x%x", nextoff)
             break
 
         loc = emu.vw.getLocation(va)
         if loc != None:
-            if emu.vw.verbose:  print("Terminating TB at Location/Reference")
-            if emu.vw.verbose:  print("%x, %d, %x, %r" % loc)
+            logger.debug("Terminating TB at Location/Reference")
+            logger.debug("%x, %d, %x, %r", loc)
             break
 
         tbl.append((va, nextoff))
         va += tsize
         #sys.stderr.write('.')
 
-    if emu.vw.verbose: 
-        print("%s: \n\t"%op.mnem + '\n\t'.join(['0x%x (0x%x)' % (x, base + x) for v,x in tbl]))
+    logger.debug("%s: \n\t"%op.mnem + '\n\t'.join(['0x%x (0x%x)' % (x, base + x) for v,x in tbl]))
 
     ###
     # for workspace emulation analysis, let's check the index register for sanity.
@@ -287,7 +294,13 @@ def analyzeTB(emu, op, starteip, amon):
         nexttgt = base + nextoff
         emu.vw.makeNumber(ova, 2)
         # check for loc first?
-        emu.vw.makeCode(nexttgt)
+        if nexttgt & 1:
+            nexttgt &= -2
+            arch = envi.ARCH_THUMB
+        else:
+            arch = envi.ARCH_ARMV7
+
+        emu.vw.makeCode(nexttgt, arch=arch)
         # check xrefs fist?
         emu.vw.addXref(op.va, nexttgt, REF_CODE)
         
@@ -343,6 +356,66 @@ def analyzeADDPC(emu, op, starteip, emumon):
         emu.setRegister(base_reg, x)
         idx = op.opers[-1].getOperValue(op, emu)
         nexttgt = base + idx
+        #print("x=%x, base=%x, idx=%x (%x)  %r %r  %d" % (x,base,idx, nexttgt, op, op.opers, emu.getRegister(op.opers[-1].reg)))
+        tbl.append((base+idx, x))
+        emu.vw.makeCode(nexttgt)
+        emu.vw.addXref(starteip, nexttgt, REF_CODE)
+
+        curname = emu.vw.getName(nexttgt)
+        if curname == None:
+            emu.vw.makeName(nexttgt, "case_%x_%x_%x" % (x, starteip, nexttgt))
+        else:
+            emu.vw.vprint("case_%x_%x_%x conflicts with existing name: %r" % (x, starteip, nexttgt, curname))
+ 
+
+    return base, tbl
+
+
+#  FIXME: don't know if this is legit... i was bug-fixing for a "return" sub pc, lr, #4 instruction.
+def analyzeSUBPC(emu, op, starteip, emumon):
+    count = None
+
+    cb = emu.vw.getCodeBlock(op.va)
+    if cb == None:
+        return None, None
+
+    off = 0
+    reg = op.opers[1].reg
+    cbva, cbsz, cbfva = cb
+    while off < cbsz:
+        top = emu.vw.parseOpcode(cbva+off)
+        if top.opcode == INS_CMP:
+            # make sure this is a comparison for this register. 
+            # the comparison should be the size of the switch-case
+            for opidx in range(len(top.opers)):
+                oper = top.opers[opidx]
+                if isinstance(oper, e_arm.ArmRegOper):
+                    if oper.reg != reg:
+                        continue
+
+                    #print("cmp op: ", top)
+                    cntoidx = (1,0)[opidx]
+                    cntoper = top.opers[cntoidx]
+                    #print("cntoper: %d, %r  %r" % (cntoidx, cntoper, vars(cntoper)))
+                    count = cntoper.getOperValue(top, emu)
+                    #print("count = ", count)
+
+        off += len(top)
+
+    if not count or count == None or count > 10000:
+        return None, None
+
+    #print("Making ADDPC SwitchCase (count=%d):" % count)
+    # wire up the switch-cases, name each one, etc...
+    tbl = []
+
+    base = op.opers[-2].getOperValue(op, emu)
+    base_reg = op.opers[1].reg
+
+    for x in range(count):
+        emu.setRegister(base_reg, x)
+        idx = op.opers[-1].getOperValue(op, emu)
+        nexttgt = base - idx
         #print("x=%x, base=%x, idx=%x (%x)  %r %r  %d" % (x,base,idx, nexttgt, op, op.opers, emu.getRegister(op.opers[-1].reg)))
         tbl.append((base+idx, x))
         emu.vw.makeCode(nexttgt)

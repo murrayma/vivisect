@@ -171,6 +171,9 @@ class WorkspaceEmulator:
             api = self.getCallApi(endeip)
             rtype, rname, convname, callname, funcargs = api
             callconv = self.getCallingConvention(convname)
+            if callconv is None:
+                logger.exception("checkCall(0x%x, 0x%x, %r): cannot get calling convention!", starteip, endeip, op)
+
             argv = callconv.getCallArgs(self, len(funcargs))
 
             ret = None
@@ -327,7 +330,7 @@ class WorkspaceEmulator:
                     if self.emumon:
                         try:
                             self.emumon.prehook(self, op, starteip)
-                        except Exception, e:
+                        except Exception as e:
                             logger.warn("funcva: 0x%x opva: 0x%x:  %r   %r (in emumon prehook)", funcva, starteip, op, e)
 
 
@@ -343,7 +346,7 @@ class WorkspaceEmulator:
                     if self.emumon:
                         try:
                             self.emumon.posthook(self, op, endeip)
-                        except Exception, e:
+                        except Exception as e:
                             logger.warn("funcva: 0x%x opva: 0x%x:  %r   %r (in emumon posthook)", funcva, starteip, op, e)
 
                         if self.emustop:

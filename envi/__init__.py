@@ -188,7 +188,7 @@ class ArchitectureModule:
         This hook allows an architecture to correct VA and Architecture, such
         as is necessary for ARM/Thumb.
         '''
-        return va, {}
+        return va, info
 
     def archModifyXrefAddr(self, tova, reftype, rflags):
         '''
@@ -241,6 +241,9 @@ class ArchitectureModule:
     def getPlatDefaultCall(self, platform):
         defcall = self._plat_def_calls.get(platform)
         return defcall
+
+    def archGetPointerAlignment(self):
+        return 1
 
 def stealArchMethods(obj, archname):
     '''
@@ -689,15 +692,6 @@ class Emulator(e_reg.RegisterContext, e_mem.MemoryObject):
         Returns the current Endianness for the emulator
         '''
         return self.imem_archs[0].getEndian()
-
-    def getMeta(self, name, default=None):
-        return self.metadata.get(name, default)
-
-    def setMeta(self, name, value):
-        """
-        Set a meta key,value pair for this workspace.
-        """
-        self.metadata[name] = value
 
     def getMeta(self, name, default=None):
         return self.metadata.get(name, default)

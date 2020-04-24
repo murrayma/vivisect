@@ -83,10 +83,11 @@ def addAnalysisModules(vw):
 
         # elfplt wants to be run before generic.entrypoints.
         vw.addAnalysisModule("vivisect.analysis.elf.elfplt")
+        # due to inconsistencies in plt layouts, we'll keep this as a func module as well
         vw.addAnalysisModule("vivisect.analysis.generic.entrypoints")
         vw.addAnalysisModule("vivisect.analysis.elf")
 
-        if arch in ('i386', 'amd64'):
+        if arch in ('i386', 'amd64', 'arm'):
             vw.addImpApi('posix', arch)
 
         if arch == 'i386':
@@ -101,7 +102,7 @@ def addAnalysisModules(vw):
         elif arch in ('arm', 'thumb', 'thumb16'):
             vw.addVaSet('thunk_reg', ( ('fva', vivisect.VASET_ADDRESS), ('reg', vivisect.VASET_INTEGER), ))
             vw.addFuncAnalysisModule('vivisect.analysis.arm.thunk_reg')
-            vw.addFuncAnalysisModule('vivisect.analysis.arm.elfplt')
+            #vw.addFuncAnalysisModule('vivisect.analysis.arm.elfplt')
             vw.addFuncAnalysisModule('vivisect.analysis.arm.renaming')
 
         vw.addAnalysisModule("vivisect.analysis.generic.funcentries")
@@ -132,6 +133,7 @@ def addAnalysisModules(vw):
 
         # Find import thunks
         vw.addFuncAnalysisModule("vivisect.analysis.generic.thunks")
+        vw.addFuncAnalysisModule("vivisect.analysis.elf.elfplt")
         vw.addAnalysisModule("vivisect.analysis.generic.pointers")
 
     elif fmt == 'macho': # MACH-O ###################################################

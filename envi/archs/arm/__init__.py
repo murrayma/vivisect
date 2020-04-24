@@ -20,6 +20,10 @@ class ArmModule(envi.ArchitectureModule):
         envi.ArchitectureModule.__init__(self, name, maxinst=4)
         self._arch_reg = self.archGetRegCtx()
 
+        # pre-generate this list
+        self.badoplist = [self.archParseOpcode(badop, 0, 0) for badop in self._arch_badopbytes]
+        self.badoplist.extend([self.archParseOpcode(badop, 0, 1) for badop in self._arch_badopbytes])
+
     def archGetRegCtx(self):
         return ArmRegisterContext()
 
@@ -31,9 +35,7 @@ class ArmModule(envi.ArchitectureModule):
         return ('\x00\x00\x60\xe3', '\xe3\x60\x00\x00')[self._endian]   #FIXME: this is only ARM mode.  this arch mod should cover both.  the ENVI architecture doesn't support this model yet.
 
     def archGetBadOps(self):
-        oplist = [ self.archParseOpcode(badop,0,0) for badop in self._arch_badopbytes ]
-        oplist.extend([ self.archParseOpcode(badop,0,1) for badop in self._arch_badopbytes ])
-        return oplist
+        return self.badoplist
  
     def getPointerSize(self):
         return 4
@@ -64,7 +66,7 @@ class ArmModule(envi.ArchitectureModule):
     def archModifyFuncAddr(self, va, info):
         if va & 1:
             return va & -2, {'arch' : envi.ARCH_THUMB}
-        return va, {}
+        return va, info
 
     def archModifyXrefAddr(self, tova, reftype, rflags):
         if tova & 1:
@@ -82,6 +84,9 @@ class ArmModule(envi.ArchitectureModule):
         groups.append(switch_mapbase)
         return groups
 
+    def archGetPointerAlignment(self):
+        return 4
+
 
 class ThumbModule(envi.ArchitectureModule):
     '''
@@ -96,6 +101,10 @@ class ThumbModule(envi.ArchitectureModule):
         envi.ArchitectureModule.__init__(self, name, maxinst=4)
         self._arch_reg = self.archGetRegCtx()
         #armVersion mask should be set here if needed
+
+        # pre-generating bad-ops list
+        self.badoplist = [ self.archParseOpcode(badop,0,0) for badop in self._arch_badopbytes ]
+        self.badoplist.extend([ self.archParseOpcode(badop,0,1) for badop in self._arch_badopbytes ])
         
     def archGetRegCtx(self):
         return ArmRegisterContext()
@@ -108,9 +117,7 @@ class ThumbModule(envi.ArchitectureModule):
         return ('\xc0\x46', '\x46\xc0')[self._endian]
  
     def archGetBadOps(self):
-        oplist = [ self.archParseOpcode(badop,0,0) for badop in self._arch_badopbytes ]
-        oplist.extend([ self.archParseOpcode(badop,0,1) for badop in self._arch_badopbytes ])
-        return oplist
+        return self.badoplist
 
     def getPointerSize(self):
         return 4
@@ -137,12 +144,15 @@ class ThumbModule(envi.ArchitectureModule):
     def archModifyFuncAddr(self, va, info):
         if va & 1:
             return va & -2, {'arch' : envi.ARCH_THUMB}
-        return va, {}
+        return va, info
 
     def archModifyXrefAddr(self, tova, reftype, rflags):
         if tova & 1:
             return tova & -2, reftype, rflags
         return tova, reftype, rflags
+
+    def archGetPointerAlignment(self):
+        return 4
 
 
 from envi.archs.arm.emu import *

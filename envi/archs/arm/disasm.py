@@ -5,28 +5,13 @@ import traceback
 import envi
 import envi.bits as e_bits
 
-from envi.bits import binary
-
-#import sys
-#import struct
-#import traceback
-
-#import envi
-#import envi.bits as e_bits
-#from envi.bits import binary
-
 from envi.archs.arm.const import *
 from envi.archs.arm.regs import *
 
-# FIXME: TODO
-# FIXME:   codeflow currently misses some switchcases
 # FIXME:   codeflow needs to identify the following pattern as a call with fallthrough
 #          (currently identifying the xref and making the fallthrough into a function):
 #           mov lr, pc
 #           sub pc, <blah>
-
-# FIXME the following things dont decode correctly
-# 5346544e    cmppl   r6, #1308622848
 
 # Possible future extensions: 
 #   * VectorPointFloat subsystem (coproc 10+11)
@@ -49,67 +34,68 @@ def addrToName(mcanv, va):
         return repr(sym)
     return "0x%.8x" % va
 
+
 # The keys in this table are made of the
 # concat of bits 27-21 and 7-4 (only when
 # ienc == mul!
 iencmul_codes = {
     # Basic multiplication opcodes
-    binary("000000001001"): ("mul",   INS_MUL,  (0,4,2), 0),
-    binary("000000011001"): ("mul",   INS_MUL,  (0,4,2), IF_PSR_S),
-    binary("000000101001"): ("mla",   INS_MLA,  (0,4,2,1), 0),
-    binary("000000111001"): ("mla",   INS_MLA,  (0,4,2,1), IF_PSR_S),
-    binary("000001101001"): ("mls",   INS_MLS,  (0,4,2,1), 0),
-    binary("000001001001"): ("umaal", INS_UMAAL,(1,0,4,2), 0),
-    binary("000010001001"): ("umull", INS_UMULL,(1,0,4,2), 0),
-    binary("000010011001"): ("umull", INS_UMULL,(1,0,4,2), IF_PSR_S),
-    binary("000010101001"): ("umlal", INS_UMLAL,(1,0,4,2), 0),
-    binary("000010111001"): ("umlal", INS_UMLAL,(1,0,4,2), IF_PSR_S),
-    binary("000011001001"): ("smull", INS_SMULL,(1,0,4,2), 0),
-    binary("000011011001"): ("smull", INS_SMULL,(1,0,4,2), IF_PSR_S),
-    binary("000011101001"): ("smlal", INS_SMLAL,(1,0,4,2), 0),
-    binary("000011111001"): ("smlal", INS_SMLAL,(1,0,4,2), IF_PSR_S),
+    0b000000001001: ("mul",   INS_MUL,  (0, 4, 2), 0),
+    0b000000011001: ("mul",   INS_MUL,  (0, 4, 2), IF_PSR_S),
+    0b000000101001: ("mla",   INS_MLA,  (0, 4, 2, 1), 0),
+    0b000000111001: ("mla",   INS_MLA,  (0, 4, 2, 1), IF_PSR_S),
+    0b000001101001: ("mls",   INS_MLS,  (0, 4, 2, 1), 0),
+    0b000001001001: ("umaal", INS_UMAAL,(1, 0, 4, 2), 0),
+    0b000010001001: ("umull", INS_UMULL, (1, 0, 4, 2), 0),
+    0b000010011001: ("umull", INS_UMULL, (1, 0, 4, 2), IF_PSR_S),
+    0b000010101001: ("umlal", INS_UMLAL, (1, 0, 4, 2), 0),
+    0b000010111001: ("umlal", INS_UMLAL, (1, 0, 4, 2), IF_PSR_S),
+    0b000011001001: ("smull", INS_SMULL, (1, 0, 4, 2), 0),
+    0b000011011001: ("smull", INS_SMULL, (1, 0, 4, 2), IF_PSR_S),
+    0b000011101001: ("smlal", INS_SMLAL, (1, 0, 4, 2), 0),
+    0b000011111001: ("smlal", INS_SMLAL, (1, 0, 4, 2), IF_PSR_S),
 
     # multiplys with <x><y>
     # "B
-    binary("000100001000"): ("smlabb", INS_SMLABB, (0,4,2,1), 0),
-    binary("000100001010"): ("smlatb", INS_SMLATB, (0,4,2,1), 0),
-    binary("000100001100"): ("smlabt", INS_SMLABT, (0,4,2,1), 0),
-    binary("000100001110"): ("smlatt", INS_SMLATT, (0,4,2,1), 0),
-    binary("000100101010"): ("smulwb", INS_SMULWB, (0,4,2), 0),
-    binary("000100101110"): ("smulwt", INS_SMULWT, (0,4,2), 0),
-    binary("000100101000"): ("smlawb", INS_SMLAWB, (0,4,2), 0),
-    binary("000100101100"): ("smlawt", INS_SMLAWT, (0,4,2), 0),
-    binary("000101001000"): ("smlalbb",INS_SMLALBB, (1,0,4,2), 0),
-    binary("000101001010"): ("smlaltb",INS_SMLALTB, (1,0,4,2), 0),
-    binary("000101001100"): ("smlalbt",INS_SMLALBT, (1,0,4,2), 0),
-    binary("000101001110"): ("smlaltt",INS_SMLALTT, (1,0,4,2), 0),
-    binary("000101101000"): ("smulbb", INS_SMULBB, (0,4,2), 0),
-    binary("000101101010"): ("smultb", INS_SMULTB, (0,4,2), 0),
-    binary("000101101100"): ("smulbt", INS_SMULBT, (0,4,2), 0),
-    binary("000101101110"): ("smultt", INS_SMULTT, (0,4,2), 0),
+    0b000100001000: ("smlabb", INS_SMLABB, (0, 4, 2, 1), 0),
+    0b000100001010: ("smlatb", INS_SMLATB, (0, 4, 2, 1), 0),
+    0b000100001100: ("smlabt", INS_SMLABT, (0, 4, 2, 1), 0),
+    0b000100001110: ("smlatt", INS_SMLATT, (0, 4, 2, 1), 0),
+    0b000100101010: ("smulwb", INS_SMULWB, (0, 4, 2), 0),
+    0b000100101110: ("smulwt", INS_SMULWT, (0, 4, 2), 0),
+    0b000100101000: ("smlawb", INS_SMLAWB, (0, 4, 2), 0),
+    0b000100101100: ("smlawt", INS_SMLAWT, (0, 4, 2), 0),
+    0b000101001000: ("smlalbb",INS_SMLALBB, (1, 0, 4, 2), 0),
+    0b000101001010: ("smlaltb",INS_SMLALTB, (1, 0, 4, 2), 0),
+    0b000101001100: ("smlalbt",INS_SMLALBT, (1, 0, 4, 2), 0),
+    0b000101001110: ("smlaltt",INS_SMLALTT, (1, 0, 4, 2), 0),
+    0b000101101000: ("smulbb", INS_SMULBB, (0, 4, 2), 0),
+    0b000101101010: ("smultb", INS_SMULTB, (0, 4, 2), 0),
+    0b000101101100: ("smulbt", INS_SMULBT, (0, 4, 2), 0),
+    0b000101101110: ("smultt", INS_SMULTT, (0, 4, 2), 0),
 
     # type 2 multiplys
 
-    binary("011100000001"): ("smuad",  INS_SMUAD, (0,4,2), 0),
-    binary("011100000011"): ("smuadx", INS_SMUADX, (0,4,2), 0),
-    binary("011100000101"): ("smusd",  INS_SMUSD, (0,4,2), 0),
-    binary("011100000111"): ("smusdx", INS_SMUSDX, (0,4,2), 0),
-    binary("011100000001"): ("smlad",  INS_SMLAD, (0,4,2,1), 0),
-    binary("011100000011"): ("smladx", INS_SMLADX, (0,4,2,1), 0),
-    binary("011100000101"): ("smlsd",  INS_SMLSD, (0,4,2,1), 0),
-    binary("011100000111"): ("smlsdx", INS_SMLSDX, (0,4,2,1), 0),
-    binary("011101000001"): ("smlald", INS_SMLALD, (1,0,4,2), 0),
-    binary("011101000011"): ("smlaldx",INS_SMLALDX, (1,0,4,2), 0),
-    binary("011101000101"): ("smlsld", INS_SMLSLD, (1,0,4,2), 0),
-    binary("011101000111"): ("smlsldx",INS_SMLSLDX, (1,0,4,2), 0),
-    binary("011101010001"): ("smmla",  INS_SMMLA, (0,4,2,1), 0),
-    binary("011101010011"): ("smmlar", INS_SMMLAR, (0,4,2,1), 0),
-    binary("011101011101"): ("smmls",  INS_SMMLS, (0,4,2,1), 0),
-    binary("011101011111"): ("smmlsr", INS_SMMLSR, (0,4,2,1), 0),
+    0b011100000001: ("smuad",  INS_SMUAD, (0, 4, 2), 0),
+    0b011100000011: ("smuadx", INS_SMUADX, (0, 4, 2), 0),
+    0b011100000101: ("smusd",  INS_SMUSD, (0, 4, 2), 0),
+    0b011100000111: ("smusdx", INS_SMUSDX, (0, 4, 2), 0),
+    0b011100000001: ("smlad",  INS_SMLAD, (0, 4, 2, 1), 0),
+    0b011100000011: ("smladx", INS_SMLADX, (0, 4, 2, 1), 0),
+    0b011100000101: ("smlsd",  INS_SMLSD, (0, 4, 2, 1), 0),
+    0b011100000111: ("smlsdx", INS_SMLSDX, (0, 4, 2, 1), 0),
+    0b011101000001: ("smlald", INS_SMLALD, (1, 0, 4, 2), 0),
+    0b011101000011: ("smlaldx",INS_SMLALDX, (1, 0, 4, 2), 0),
+    0b011101000101: ("smlsld", INS_SMLSLD, (1, 0, 4, 2), 0),
+    0b011101000111: ("smlsldx",INS_SMLSLDX, (1, 0, 4, 2), 0),
+    0b011101010001: ("smmla",  INS_SMMLA, (0, 4, 2, 1), 0),
+    0b011101010011: ("smmlar", INS_SMMLAR, (0, 4, 2, 1), 0),
+    0b011101011101: ("smmls",  INS_SMMLS, (0, 4, 2, 1), 0),
+    0b011101011111: ("smmlsr", INS_SMMLSR, (0, 4, 2, 1), 0),
     #note for next two must check that Ra = 1111 otherwise is smmla
     #hard coding values until find better solution
-    #binary("011101010001"): ("smmul", (0,4,2), 0),
-    #binary("011101010011"): ("smmulr", (0,4,2), 0),
+    #0b011101010001: ("smmul", (0,4,2), 0),
+    #0b011101010011: ("smmulr", (0,4,2), 0),
 }
 
 def sh_lsl(num, shval, size=4):
@@ -401,25 +387,29 @@ def p_misc(opval, va):
 
 
 def p_misc1(opval, va): # 
-    #R = (opval>>22) & 1
-    #Rn = (opval>>16) & 0xf
-    #Rd = (opval>>12) & 0xf
-    #rot_imm = (opval>>8) & 0xf
-    #imm = opval & 0xff
-    #Rm = opval & 0xf
     iflags = 0
 
     if opval & 0x0ff000f0 == 0x01200010:
         opcode = INS_BX
         mnem = 'bx'
         Rm = opval & 0xf
+        cond = (opval >> 28) & 0xf
+
         olist = ( ArmRegOper(Rm, va=va), )
+
         if Rm == REG_LR:
-            iflags |= envi.IF_RET | envi.IF_NOFALL
+            if cond < 0xe:
+                iflags |= envi.IF_RET | envi.IF_COND
+            else:
+                iflags |= envi.IF_RET | envi.IF_NOFALL
+
         else:
-            iflags |= envi.IF_BRANCH
-        
-    elif opval & 0x0ff000f0 == 0x01600010:  
+            if cond < 0xe:
+                iflags |= envi.IF_BRANCH | envi.IF_COND
+            else:
+                iflags |= envi.IF_BRANCH
+
+    elif opval & 0x0ff000f0 == 0x01600010:
         opcode = INS_CLZ
         mnem = 'clz'
         Rd = (opval>>12) & 0xf
@@ -689,12 +679,12 @@ multfail = (None, None, None, None)
 
 iencmul_r15_codes = {
     # Basic multiplication opcodes
-    binary("011101010001"): ("smmul",  INS_SMMUL,  (0,4,2), 0),
-    binary("011101010011"): ("smmulr", INS_SMMULR, (0,4,2), 0),
-    binary("011100000001"): ("smuad",  INS_SMUAD,  (0,4,2), 0),
-    binary("011100000011"): ("smuadx", INS_SMUADX, (0,4,2), 0),
-    binary("011100000101"): ("smusd",  INS_SMUSD,  (0,4,2), 0),
-    binary("011100000111"): ("smusdx", INS_SMUSDX, (0,4,2), 0),
+    0b011101010001: ("smmul",  INS_SMMUL,  (0,4,2), 0),
+    0b011101010011: ("smmulr", INS_SMMULR, (0,4,2), 0),
+    0b011100000001: ("smuad",  INS_SMUAD,  (0,4,2), 0),
+    0b011100000011: ("smuadx", INS_SMUADX, (0,4,2), 0),
+    0b011100000101: ("smusd",  INS_SMUSD,  (0,4,2), 0),
+    0b011100000111: ("smusdx", INS_SMUSDX, (0,4,2), 0),
 }
 
 def p_mult(opval, va):
@@ -3871,15 +3861,17 @@ class ArmOpcode(envi.Opcode):
 
     def __init__(self, va, opcode, mnem, prefixes, size, operands, iflags=0, simdflags=0):
         """
-        constructor for the basic Envi Opcode object.  Arguments as follows:
+        (constructor for the basic Envi Opcode object, plus simdflags)
+        Arguments as follows:
 
+        va       - The virtual address the instruction lives at (used for PC relative immediates etc...)
         opcode   - An architecture specific numerical value for the opcode
         mnem     - A humon readable mnemonic for the opcode
         prefixes - a bitmask of architecture specific instruction prefixes
         size     - The size of the opcode in bytes
         operands - A list of Operand objects for this opcode
         iflags   - A list of Envi (architecture independant) instruction flags (see IF_FOO)
-        va       - The virtual address the instruction lives at (used for PC relative immediates etc...)
+        simdflags - extra set of flags to store SIMD/vector information without killing iflags
 
         NOTE: If you want to create an architecture spcific opcode, I'd *highly* recommend you
               just copy/paste in the following simple initial code rather than calling the parent
@@ -3928,7 +3920,6 @@ class ArmOpcode(envi.Opcode):
             ret.append((self.va + self.size, envi.BR_FALL | self._def_arch))
             #print "getBranches: next...", hex(self.va), self.size
 
-        # FIXME if this is a move to PC god help us...
         flags = 0
 
         if self.prefixes != COND_AL:
@@ -3941,7 +3932,7 @@ class ArmOpcode(envi.Opcode):
             operval = oper.getOperValue(self, emu)
 
             if self.opcode in (INS_BLX, INS_BX):
-                if operval != None and operval & 3:
+                if operval is not None and operval & 3:
                     flags |= envi.ARCH_THUMB
                     operval &= -2
                 else:
@@ -3964,14 +3955,21 @@ class ArmOpcode(envi.Opcode):
                     print "0x%x:  %r      getBranches() with no emulator" % (self.va, self)
                     '''
             else:
+                # actually add the branch here...
+                # if we are a deref, add the DEREF
+                if oper.isDeref():
+                    ref = oper.getOperAddr(self, emu)
+                    ret.append((ref, flags | envi.BR_DEREF))
+
+                # if we point to a valid address, add that branch as well:
                 ret.append((operval, flags))
             #print "getBranches: (0x%x) add  0x%x   %x"% (self.va, operval, flags)
 
         return ret
 
-    def getOperValue(self, idx, emu=None):
+    def getOperValue(self, idx, emu=None, codeflow=False):
         oper = self.opers[idx]
-        return oper.getOperValue(self, emu=emu)
+        return oper.getOperValue(self, emu=emu, codeflow=codeflow)
 
     S_FLAG_MASK = IF_PSR_S | IF_PSR_S_SIL
     
@@ -4100,9 +4098,9 @@ class ArmRegOper(ArmOperand):
     def getWidth(self):
         return rctx.getRegisterWidth(self.reg) / 8
 
-    def getOperValue(self, op, emu=None):
-        if self.reg == REG_PC:
-            return self.va  # FIXME: is this modified?  or do we need to add # to this?
+    def getOperValue(self, op, emu=None, codeflow=False):
+        if self.reg == REG_PC and not codeflow:
+            return self.va
 
         if emu == None:
             return None
@@ -4148,7 +4146,7 @@ class ArmRegScalarOper(ArmRegOper):
     def isDeref(self):
         return True
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
 
@@ -4197,7 +4195,7 @@ class ArmRegShiftRegOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
         return shifters[self.shtype](emu.getRegister(self.reg), emu.getRegister(self.shreg))
@@ -4246,7 +4244,7 @@ class ArmRegShiftImmOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if self.reg == REG_PC:
             return shifters[self.shtype](self.va, self.shimm)
 
@@ -4307,7 +4305,7 @@ class ArmImmOper(ArmOperand):
     def isDiscrete(self):
         return True
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return shifters[self.shtype](self.val, self.shval, self.size)
 
     def render(self, mcanv, op, idx):
@@ -4343,7 +4341,7 @@ class ArmFloatOper(ArmImmOper):
     def setByBitField(self, val):
         self.val = val
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return self.val
 
     def getFloatValue(self, op, emu=None):
@@ -4408,7 +4406,7 @@ class ArmScaledOffsetOper(ArmOperand):
     def isDeref(self):
         return True
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
 
@@ -4549,7 +4547,7 @@ class ArmRegOffsetOper(ArmOperand):
         addr = self.getOperAddr(op, emu)
         return emu.writeMemValue(addr, val, self.tsize)
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
 
@@ -4660,7 +4658,7 @@ class ArmImmOffsetOper(ArmOperand):
 
         emu.writeMemValue(addr, val, self.tsize)
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         # can't survive without an emulator
         if emu == None:
             return None
@@ -4796,7 +4794,7 @@ class ArmPcOffsetOper(ArmOperand):
     def isDiscrete(self):
         return True
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return self.va + self.val
 
     def render(self, mcanv, op, idx):
@@ -4838,7 +4836,7 @@ class ArmPgmStatRegOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
 
@@ -4893,7 +4891,7 @@ class ArmEndianOper(ArmImmOper):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return self.val
 
 class ArmRegListOper(ArmOperand):
@@ -4925,7 +4923,7 @@ class ArmRegListOper(ArmOperand):
         if self.oflags & OF_UM:
             mcanv.addText('^')
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
         reglist = []
@@ -4983,7 +4981,7 @@ class ArmExtRegListOper(ArmOperand):
 
         mcanv.addText('}')
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         '''
         Returns a list of the values in the targeted Extension Registers
         '''
@@ -5044,7 +5042,7 @@ class ArmPSRFlagsOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
         raise Exception("FIXME: Implement ArmPSRFlagsOper.getOperValue() (does it want to be a bitmask? or the actual value according to the PSR?)")
@@ -5073,7 +5071,7 @@ class ArmCoprocOpcodeOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return self.val
 
     def repr(self, op):
@@ -5099,7 +5097,7 @@ class ArmCoprocOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return self.val
 
     def repr(self, op):
@@ -5131,7 +5129,7 @@ class ArmCoprocRegOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         if emu == None:
             return None
         raise Exception("FIXME: Implement ArmCoprocRegOper.getOperValue()")
@@ -5182,7 +5180,7 @@ class ArmModeOper(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return None
 
     def repr(self, op):
@@ -5208,7 +5206,7 @@ class ArmDbgHintOption(ArmOperand):
     def isDeref(self):
         return False
 
-    def getOperValue(self, op, emu=None):
+    def getOperValue(self, op, emu=None, codeflow=False):
         return self.val
 
     def repr(self, op):
@@ -5234,7 +5232,7 @@ class ArmBarrierOption(ArmOperand):
     def render(self, mcanv, op, idx):
         mcanv.addText(self.retOption())
 
-    def getOperValue(self, idx, emu=None):
+    def getOperValue(self, idx, emu=None, codeflow=False):
         return None
         
 class ArmCPSFlagsOper(ArmOperand):
@@ -5249,7 +5247,7 @@ class ArmCPSFlagsOper(ArmOperand):
         flags = [AIF_FLAGS[x] for x in range(3) if self.flags & (1<<x)]
         mcanv.addNameText(','.join(flags), typename='cpsflags')
 
-    def getOperValue(self, idx, emu=None):
+    def getOperValue(self, idx, emu=None, codeflow=False):
         return None
         
 
@@ -5307,9 +5305,6 @@ class ArmDisasm:
         if mnem == None or type(mnem) == int:
             raise Exception("mnem == %r!  0x%x" % (mnem, opval))
 
-        # since our flags determine how the instruction is decoded later....  
-        # performance-wise this should be set as the default value instead of 0, but this is cleaner
-        #flags |= envi.ARCH_ARMV7
         # Ok...  if we're a non-conditional branch, *or* we manipulate PC unconditionally,
         # lets call ourself envi.IF_NOFALL
         if cond == COND_AL:                             # FIXME: this could backfire if COND_EXTENDED...

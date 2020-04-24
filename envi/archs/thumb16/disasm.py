@@ -7,12 +7,6 @@ from envi import InvalidInstruction
 from envi.archs.arm.disasm import *
 armd = ArmDisasm()
 
-#thumb_32 = [
-        #binary('11101'),
-        #binary('11110'),
-        #binary('11111'),
-#]
-
 #FIXME: check to make sure ldrb/ldrh are handled consistently, wrt: IF_B and IF_H.  emulation would like all the same.
 
 
@@ -36,7 +30,6 @@ class simpleops:
     def __call__(self, va, value):
         ret = []
         for otype, shval, mask in self.operdef:
-            #oval = shmaskval(value, shval, mask)
             oper = OperType[otype]((value >> shval) & mask, va=va)
             ret.append( oper )
         return COND_AL, (ret), None
@@ -1411,7 +1404,7 @@ def tb_ldrex_32(va, val1, val2):
         tsize = [1, 2, 0, 8][op3&3]
 
         oper0 = ArmRegOper(rt, va=va)
-        oper1 = ArmRegOffsetOper(rn, va=va, tsize=tsize)
+        oper1 = ArmImmOffsetOper(rn, 0, va=va, tsize=tsize)
         opers = (oper0, oper1)
 
     else:       # tbb/tbh
@@ -2118,7 +2111,7 @@ thumb2_extension = [
     ('111010011111',    (INS_LDRD, 'ldrd',    ldrd_imm_32,     IF_THUMB32)),
 
     ('111010001100',    (INS_STREX, 'strex',   strexn_32,       IF_THUMB32)),
-    ('111010001101',    (None, 'tb',      tb_ldrex_32,     IF_THUMB32)),   # FIXME: these are jmp tables.  mark them!
+    ('111010001101',    (None,      'tb',      tb_ldrex_32,     IF_THUMB32)),   # FIXME: these are jmp tables.  mark them!
 
     # data-processing (shifted register)
     #('1110101',             (85,'dp_sr',    dp_shift_32,         IF_THUMB32)),
