@@ -8,11 +8,11 @@ archcalls = {
     'i386':'cdecl',
     'amd64':'sysvamd64call',
     'arm':'armcall',
-    'ppc':'ppccall',
-    'vle':'ppccall',
     'thumb':'armcall',
     'thumb16':'armcall',
-    }
+    'ppc':'ppccall',
+    'ppc64':'ppccall',
+}
 
 def parseFd(vw, fd, filename=None, baseaddr=None):
     fd.seek(0)

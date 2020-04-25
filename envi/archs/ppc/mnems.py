@@ -2,6 +2,11 @@
 
 import envi.bits as e_bits
 
+# "encodings" is data scraped from the EREF manual
+# "EXTRA_OPCODES" is a table added manually in addition to the scraped data
+
+#FIXME: dcbtst (and others, I assume) has different operand ordering between Embedded and Server
+
 encodings = '''tdi 0 0 0 0 1 0
  TO
  rA
@@ -8555,7 +8560,7 @@ dss 0 1 1 1 1 1
 dssall 0 1 1 1 1 1
  1
  //
- STRM
+ ///
  ///
  ///
  1 1 0 0 1
@@ -10579,6 +10584,145 @@ THING_FILL = 0
 THING_VAR = 1
 THING_STATIC = 2
 
+rAnegades = [
+    #'addi',        # handled in aliasing, if rA==0, these are really LI and LIS
+    #'addis',
+    'dcba',
+    'dcbal',
+    'dcbf',
+    'dcbfep',
+    'dcbi',
+    'dcblc',
+    'dcblq.',
+    'dcbst',
+    'dcbstep',
+    'dcbt',
+    'dcbtep',
+    'dcbtst',
+    'dcbtstep',
+    'dcbtstls',
+    'dcbz',
+    'dcbzep',
+    'dcbzl',
+    'dcbzlep',
+    'evlddepx',
+    'icblq.',
+    'icbtls',
+    'isel',
+    'icbi',
+    'icbiep',
+    'icblc',
+    'icbt',
+    'lbarx',
+    'lbepx',
+    'lbz',
+    'lbzx',
+    'ld',
+    'ldarx',
+    'ldbrx',
+    'ldepx',
+    'ldx',
+    'lfd',
+    'lfdepx',
+    'lfdx',
+    'lfs',
+    'lfsx',
+    'lha',
+    'lhax',
+    'lharx',
+    'lhbrx',
+    'lhepx',
+    'lhz',
+    'lhzx',
+    'lmw',
+    'lvepx',
+    'lvepxl',
+    'lwa',
+    'lwarx',
+    'lwax',
+    'lwbrx',
+    'lwepx',
+    'lwz',
+    'lwzx',
+    'stb',
+    'stbcx.',
+    'stbepx',
+    'stbx',
+    'std',
+    'stdbrx',
+    'stdcx.',
+    'stdepx',
+    'stdx',
+    'stfd',
+    'stfdepx',
+    'stfdx',
+    'stfiwx',
+    'stfs',
+    'stfsx',
+    'sth',
+    'sthbrx',
+    'sthcx.',
+    'sthepx',
+    'sthx',
+    'stmw',
+    'stvepx',
+    'stvepxl',
+    'stw',
+    'stwbrx',
+    'stwcx.',
+    'stwepx',
+    'stwx',
+    'tlbsx',
+    # second time through additions
+    'lq',
+    'stq',
+    'lswi',
+    'lswx',
+    'stswi',
+    'stswx',
+    'lfiwax',
+    'lfiwzx',
+    'stfiwx',
+    'lfdp',
+    'stfdp',
+    'lfdpx',
+    'stfdpx',
+    'lvebx',
+    'lvehx',
+    'lvewx',
+    'lvx',
+    'lvxl',
+    'stvebx',
+    'stvehx',
+    'stvewx',
+    'stvx',
+    'stvxl',
+    'lvsl',
+    'lvsr',
+    'lqarx',
+    'stqcx.',
+    'eciwx',
+    'ecowx',
+    'lbzcix',
+    'lhzcix',
+    'lwzcix',
+    'ldcix',
+    'stbcix',
+    'sthcix',
+    'stwcix',
+    'stdcix',
+    'tlbilx',
+    'tlbsrx.',
+]
+
+TAG_APPEND  = -1
+TAG_PREPEND = 0
+EXTRA_OPCODES = {
+        0x1f:   (
+            (TAG_APPEND, 0xfe0007ff, 0x7c0006a5, ( 'tlbsrx.', 'INS_TLBSX', 'FORM_X', 'CAT_EMBEDDED', "(  ( 'rA', FIELD_rA, 16, 0x1f ), ( 'rB', FIELD_rB, 11, 0x1f ),)" , "IF_RC|IF_MEM_EA" ), ),
+            ),
+        }
+
 def decode(s):
     lines = s.split('\n')
     groups = []
@@ -10957,24 +11101,6 @@ IGNORE_CONSTS = (
         '///',
     )
 
-simplified_mnemonics = (
-        'nop',
-        'li',
-        'lis',
-        'la',
-        'mr',
-        'not',
-        'mtcr',
-        'lwsync',
-        'hwsync',
-        'msync',
-        'esync',
-        'isellt',
-        'iselgt',
-        'iseleq',
-        'waitrsv',
-        )
-
 ############
 aa = ('','a','lr','ctr')
 lk = ('','l')
@@ -11031,13 +11157,6 @@ for a in range(2):
             if lk[l] == 'l':
                 flag = flag.replace('| envi.IF_NOFALL','').replace('envi.IF_BRANCH', 'envi.IF_CALL')
                 
-            #for bi in range(32):
-            mnem = mnbase + lk[l] + aa[a]
-            opcode = "INS_" + mnem.upper()
-            num = 0x40000000 |(bo<<21) |  a<<1 | l
-
-            bcopcodes.append((mnem, opcode, (0xffe00003, num), opoff, flag))
-
             mnem = mnbase + 'lr' + lk[l] + aa[a]
             if mnem == 'blr':
                 flag = 'envi.IF_RET | envi.IF_NOFALL'
@@ -11052,6 +11171,16 @@ for a in range(2):
 
             bcctropcodes.append((mnem, opcode, (0xffe007ff, num), opoff, flag))
 
+            #if mnbase == 'b':
+            #    continue
+
+            #for bi in range(32):
+            mnem = mnbase + lk[l] + aa[a]
+            opcode = "INS_" + mnem.upper()
+            num = 0x40000000 |(bo<<21) |  a<<1 | l
+
+            bcopcodes.append((mnem, opcode, (0xffe00003, num), opoff, flag))
+
 
 '''
 bc BO, BI, BD (, AA, LK)
@@ -11062,8 +11191,39 @@ AA = Absolute Addressing (instead of offset)
 LK = Link or not
 '''
 ############
+mnems_simplify = [
+        'nop',
+        'li',
+        'lis',
+        'la',
+        'mr',
+        'not',
+        'mtcr',
+        'lwsync',
+        'hwsync',
+        'msync',
+        'esync',
+        'isellt',
+        'iselgt',
+        'iseleq',
+        'waitrsv',
+        'cmpw',
+        'cmpd',
+        'cmpwi',
+        'cmpdi',
+        'cmplw',
+        'cmpld',
+        'cmplwi',
+        'cmpldi',
+        ]
 
 def buildOutput():
+    '''
+    this is the highest level.  
+    parses data to get opgrps, builds tables, applies mnems_simplify
+    then generates the textual output
+    returns three outputs, which are lists of string "lines" to be written to a file
+    '''
     out = []
     opgrps = parseData()
     deets = buildTables(opgrps)
@@ -11077,11 +11237,9 @@ def buildOutput():
             mnems.append(instr[0])
             #raw_input('waiting...')
 
-    for mnem in simplified_mnemonics:
-        mnems.append(mnem)
-
     # kick out the constant strings
 
+    # FIELD_* entries
     fieldcounter = 0
     keys = [key for key in FIELD_DATA.keys() if key not in IGNORE_CONSTS]
     keys.sort()
@@ -11098,6 +11256,7 @@ def buildOutput():
         fieldcounter += 1
     out.append('')
 
+    # CATEGORIES
     catcounter = 0
     for cat in cat_names:
         out.append('CAT_%s = 1<<%d' % (cat, catcounter))
@@ -11106,6 +11265,7 @@ def buildOutput():
     out.append('CATEGORIES = { y : x  for x,y in globals().items() if x.startswith("CAT_")}')
     out.append('')
 
+    # FORMS
     form_names = []
     formcounter = 0
     keys = [form for form in FORM_CONST.values() ]
@@ -11123,12 +11283,21 @@ def buildOutput():
     out.append('}')
 
 
+    # MNEMONICS list
     out.append('')
     out.append('mnems = (')
 
     mnem_array = []
     mnem_done = []
     for mnem in mnems:
+        nmnem = mnem.replace('.','')
+        if nmnem in mnem_done:
+            continue
+        mnem_array.append("    '%s'," % nmnem)
+        mnem_done.append(nmnem)
+
+    # allows us to insert non-scraped mnemonics into the const_gen.py without manual modification
+    for mnem in mnems_simplify:
         nmnem = mnem.replace('.','')
         if nmnem in mnem_done:
             continue
@@ -11148,11 +11317,15 @@ def buildOutput():
     out.append('')
     out.append('inscounter = 0\nfor mnem in mnems:\n    globals()["INS_"+mnem.upper()] = inscounter\n    inscounter += 1\n')
     out.append('')
+
+    # additional CONSTs
     out.append('IF_NONE = 0')
-    out.append('IF_RC  \t\t\t= 1<<8')
-    out.append('IF_ABS \t\t\t = 1<<9')
-    out.append('IF_BRANCH_LIKELY\t\t\t = 1<<10')
-    out.append('IF_BRANCH_UNLIKELY\t\t\t = 1<<11')
+    out.append('IF_RC = 1<<8')
+    out.append('IF_ABS = 1<<9')
+    out.append('IF_BRANCH_LIKELY = 1<<10')
+    out.append('IF_BRANCH_UNLIKELY = 1<<11')
+    out.append('IF_MEM_EA = 1<<12')
+    out.append('')
 
     # now build the instruction tables.
     out2 = []
@@ -11165,7 +11338,7 @@ def buildOutput():
         for instr in grp:
             mnem, grptxt, form, cat, fields, statbits, varfs, stats, nfields = instr
 
-            # create mask and value.
+            # create mask and value, parse FIELD data (operands).
             mask = 0
             val  = 0
             #overlaps = []
@@ -11194,6 +11367,7 @@ def buildOutput():
             fields = [field for field in nfields if field[4] == THING_VAR]
             print "Mask/Val: ", bin(mask), bin(val), hex(mask), hex(val), mnem, fields
 
+            # generate FIELDS output string
             fout = []
             for field in fields:
                 n, fname, start, sz, ftyp = field
@@ -11208,7 +11382,7 @@ def buildOutput():
                 fout.append(" ( '%s', %s, %s, 0x%x )," % (fname, "FIELD_"+fname, shr, fmask))
 
             
-            # fix up the operand ordering where possible.  this is faster and simpler than doing it in the decoder
+            #### fix up the operand ordering where possible.  this is faster and simpler than doing it in the decoder
             if len(fout) > 1 and 'FIELD_rS' in fout[0] and form not in  ('EVX', ):
                 if mnem not in ('evstddepx', ) and not mnem.startswith('st'):    # WONKY AS SHIT!
                     temp = fout[0]
@@ -11249,6 +11423,13 @@ def buildOutput():
                 if mnem in ('ba', 'bca', 'bla', 'bcla',):
                     iflags.append('IF_ABS')
 
+            elif mnem.startswith('rf'):
+                iflags.append('envi.IF_RET | envi.IF_NOFALL')
+
+            if mnem in rAnegades:
+                iflags.append('IF_MEM_EA')
+
+            # last flag check
             if not len(iflags):
                 iflags.append("IF_NONE")
 
@@ -11293,6 +11474,14 @@ def buildOutput():
 
             out2.append('        (0x%x, 0x%x, ( %s ), ),' % (mask, val, data))
 
+        # ADDITIONAL INSTRUCTIONS NOT INCLUDED IN EREF BREAKDOWN (manual)
+        for tag, mask, val, data in EXTRA_OPCODES.get(grpkey, []):
+            data = "'%s', %s, %s, %s, %s, %s" % data
+            if tag == TAG_PREPEND:
+                out2.insert(0,  '        (0x%x, 0x%x, ( %s ), ),' % (mask, val, data))
+            else:
+                out2.append(    '        (0x%x, 0x%x, ( %s ), ),' % (mask, val, data))
+
         out2.append('    ),')
     out2.append('}',)
 
@@ -11331,6 +11520,8 @@ def buildOutput():
         elif key == 'BI':
             out3.append('    FIELD_%s : PpcCBRegOper,' % (nkey))
         elif key == 'BD':
+            out3.append('    FIELD_%s : PpcSImm3Oper,' % (nkey))
+        elif key == 'DS':
             out3.append('    FIELD_%s : PpcSImm3Oper,' % (nkey))
         else:
             out3.append('    FIELD_%s : PpcImmOper,' % (nkey))

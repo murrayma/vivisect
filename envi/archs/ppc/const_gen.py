@@ -944,6 +944,14 @@ mnems = (
     'iselgt',
     'iseleq',
     'waitrsv',
+    'cmpw',
+    'cmpd',
+    'cmpwi',
+    'cmpdi',
+    'cmplw',
+    'cmpld',
+    'cmplwi',
+    'cmpldi',
     'bdnzf',
     'bdnzf',
     'bdzf',
@@ -961,7 +969,6 @@ mnems = (
     'bt',
     'bdnz',
     'bdz',
-    'b',
     'bdnz',
     'bdnz',
     'bdz',
@@ -983,7 +990,6 @@ mnems = (
     'btl',
     'bdnzl',
     'bdzl',
-    'bl',
     'bdnzl',
     'bdnzl',
     'bdzl',
@@ -1005,7 +1011,6 @@ mnems = (
     'bta',
     'bdnza',
     'bdza',
-    'ba',
     'bdnza',
     'bdnza',
     'bdza',
@@ -1027,7 +1032,6 @@ mnems = (
     'btla',
     'bdnzla',
     'bdzla',
-    'bla',
     'bdnzla',
     'bdnzla',
     'bdzla',
@@ -1217,7 +1221,8 @@ for mnem in mnems:
 
 
 IF_NONE = 0
-IF_RC  			= 1<<8
-IF_ABS 			 = 1<<9
-IF_BRANCH_LIKELY			 = 1<<10
-IF_BRANCH_UNLIKELY			 = 1<<11
+IF_RC = 1<<8
+IF_ABS = 1<<9
+IF_BRANCH_LIKELY = 1<<10
+IF_BRANCH_UNLIKELY = 1<<11
+IF_MEM_EA = 1<<12

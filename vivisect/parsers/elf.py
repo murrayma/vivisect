@@ -114,22 +114,40 @@ arch_names = {
     Elf.EM_386:'i386',
     Elf.EM_X86_64:'amd64',
     Elf.EM_MSP430:'msp430',
-    Elf.EM_PPC:'ppc',
-    Elf.EM_PPC64:'ppc64',
+    Elf.EM_PPCE:'ppc32-embedded',
+    Elf.EM_PPC64E:'ppc-embedded',
+    Elf.EM_PPC:'ppc32-server',
+    Elf.EM_PPC64:'ppc-server',
     Elf.EM_ARM_AARCH64:'aarch64',
 }
 # FIXME: interpret ELF headers to configure VLE pages
 
 # FIXME: make ArchModules specify the default calling convention based on Architecture settings (which must be handed in)
 archcalls = {
-    'i386':'cdecl',
-    'amd64':'sysvamd64call',
-    'arm':'armcall',
-    'thumb':'armcall',
-    'ppc':'ppccall',
-    'thumb16':'armcall',
-    'aarch64':'a64call',
+    'i386': 'cdecl',
+    'amd64': 'sysvamd64call',
+    'arm': 'armcall',
+    'vle': 'ppccall',
+    'ppc32-embedded': 'ppccall',
+    'ppc32-server': 'ppccall',
+    'ppc-embedded': 'ppccall',
+    'ppc-server': 'ppccall',
 }
+
+
+def getArchName(elf):
+    machine = elf.e_machine
+    if machine == Elf.EM_PPC64 and elf.e_flags & Elf.EM_PPC_EMB:
+        machine = Elf.EM_PPC64E
+    elif machine == Elf.EM_PPC and elf.e_flags & Elf.EM_PPC_EMB:
+        machine = Elf.EM_PPCE
+    arch = arch_names.get(elf.e_machine)
+
+    if arch is None:
+       raise Exception("Unsupported Architecture: %d\n", elf.e_machine)
+
+    return arch
+
 
 def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filefmt='elf', baseaddr=None):
     # analysis of discovered functions and data locations should be stored until the end of loading
@@ -138,7 +156,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
     new_functions = []
 
     if arch == None:
-        arch = arch_names.get(elf.e_machine)
+	    arch = getArchName(elf)
         if arch is None:
            raise Exception("Unsupported Architecture: %d\n", elf.e_machine)
 
@@ -184,12 +202,8 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
     fname = vw.addFile(filename.lower(), baseaddr, fhash)
 
     strtabs = {}
-    secnames = []
-    for sec in elf.getSections():
-        secnames.append(sec.getName())
-
-    pgms = elf.getPheaders()
     secs = elf.getSections()
+    pgms = elf.getPheaders()
 
     for pgm in pgms:
         if pgm.p_type == Elf.PT_LOAD:
@@ -357,6 +371,33 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
             logger.debug("LINK\t%r",sec.sh_link)
             for s in makeSymbolTable(vw, sva, sva+size):
                  logger.info("######################## .dynsym %r",s)
+
+        elif sname in (".bss",):
+            if vw.getName(fname + '.bss_temp') is None:
+                sdasz = sec.sh_size
+                align = sec.sh_addralign
+                sdasz += align-1
+                sdasz = (sdasz / align) * align
+                sdabase = vw.addMemoryMap(None, 7, fname + sname, '\0' * sdasz)
+                vw.makeName(sdabase, fname + ".bss_temp")
+
+        elif sname in (".sbss", ".sdata"):
+            if vw.getName('_SDA_BASE_') is None:
+                sdasz = sec.sh_size
+                align = sec.sh_addralign
+                sdasz += align-1
+                sdasz = (sdasz / align) * align
+                sdabase = vw.addMemoryMap(None, 7, fname + sname, '\0' * sdasz)
+                vw.makeName(sdabase, "_SDA_BASE_")
+
+        elif sname in (".sbss2", ".sdata2"):
+            if vw.getName('_SDA2_BASE_') is None:
+                sdasz = sec.sh_size
+                align = sec.sh_addralign
+                sda2sz += align-1
+                sda2sz = (sda2sz / align) * align
+                sda2base = vw.addMemoryMap(None, 7, fname + sname, '\0' * sda2sz)
+                vw.makeName(sda2base, "_SDA2_BASE_")
 
         # If the section is really a string table, do it
         if sec.sh_type == Elf.SHT_STRTAB:

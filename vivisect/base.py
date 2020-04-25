@@ -418,6 +418,9 @@ class VivWorkspaceCore(object, viv_impapi.ImportApi):
         else:
             self.comments[va] = comment
 
+    def _handleENDIAN(self, einfo):
+        self._doSetEndian(einfo)
+
     def _handleADDFILE(self, einfo):
         normname, imagebase, md5sum = einfo
         self.filemeta[normname] = {"md5sum":md5sum,"imagebase":imagebase}
@@ -536,6 +539,7 @@ class VivWorkspaceCore(object, viv_impapi.ImportApi):
         self.ehand[VWE_CHAT]     = self._handleCHAT
         self.ehand[VWE_SYMHINT]  = self._handleSYMHINT
         self.ehand[VWE_AUTOANALFIN] = self._handleAUTOANALFIN
+        self.ehand[VWE_ENDIAN] = self._handleENDIAN
 
         self.thand = [None for x in xrange(VTE_MAX)]
         self.thand[VTE_IAMLEADER] = self._handleIAMLEADER
@@ -603,7 +607,7 @@ class VivWorkspaceCore(object, viv_impapi.ImportApi):
     def getEndian(self):
         return self.bigend
 
-    def setEndian(self, endian):
+    def _doSetEndian(self, endian):
         self.bigend = endian
         for arch in self.imem_archs:
             arch.setEndian(self.bigend)

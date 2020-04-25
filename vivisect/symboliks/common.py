@@ -321,10 +321,22 @@ class SymbolikBase:
             path.append(cur)    # old walkTree expects cur to be on the top of the stack
             newb = cb(path, cur, ctx)
             path.pop()          # clean up, since our algorithm doesn't expect cur on the top...
-            #sys.stdout.write(' << ')
+            #sys.stdout.write(' << \n')
 
             done.add(cur._sym_id)
 
+            if newb != None and newb != cur:
+                cur = newb
+                #sys.stdout.write(' 8 ')
+                # tie newb in
+                # print("setSymKid: %s :: %d" % (len(path), idx))
+                if len(path):
+                    parent = path[-1]
+                    pidx = idxs[-1]
+                    parent.setSymKid(pidx, newb)
+                continue    # give it another shot...
+
+            # exit if we're the top node
             if not len(path):
                 #sys.stdout.write('=')
                 if newb:
@@ -334,11 +346,6 @@ class SymbolikBase:
             # pop back up a level
             cur = path.pop()
             idx = idxs.pop()
-
-            # tie newb in
-            if newb is not None:
-                # print("setSymKid: %s :: %d" % (len(path), idx))
-                cur.setSymKid(idx, newb)
 
             idx += 1
 

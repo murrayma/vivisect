@@ -143,15 +143,15 @@ class AnalysisMonitor(EmulationMonitor):
 
                     self.operrefs.append((starteip,i,operva,o.tsize,stackoff,discrete))
 
-        if op.iflags & BRANCH_FLAGS:
-            oper = op.opers[0]
-            if oper.isDeref() or oper.isReg():
-                for cb in self._dynamic_branch_handlers:
-                    try:
-                        cb(self, emu, op, starteip)
-                    except:
+        if op.iflags & BRANCH_FLAGS:  # handle "branch to inherent register" such as bctr (ppc)
+            for tgt, bflags in op.getBranches():    # ignoring emu, so we correctly identify the dynamic branch
+                if tgt is None:
+                    for cb in self._dynamic_branch_handlers:
+                        logger.debug("dynamic branch cb: %r", cb)
+                        try:
+                            cb(self, emu, op, starteip)
+                        except Exception, e:
                         logger.exception('error with dyn branch handler (%r)', repr(cb))
-
 
     def apicall(self, emu, op, pc, api, argv):
 
