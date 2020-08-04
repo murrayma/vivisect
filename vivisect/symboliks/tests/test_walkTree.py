@@ -269,7 +269,7 @@ ast5 = o_add(
             ,Const(0x00000004,8)
             ,8)
 
-answer5 = (
+answer5 = [
         Const(0x00000000,8),
         Const(0x00000001,8),
         o_add(Const(0x00000000,8),Const(0x00000001,8),8),
@@ -279,7 +279,7 @@ answer5 = (
         o_add(o_add(Const(0x00000000,8),Const(0x00000001,8),8),o_add(Const(0x00000002,8),Const(0x00000003,8),8),8),
         Const(0x00000004,8),
         o_add(o_add(o_add(Const(0x00000000,8),Const(0x00000001,8),8),o_add(Const(0x00000002,8),Const(0x00000003,8),8),8),Const(0x00000004,8),8),
-        )
+        ]
 reduced5 = Const(0x0000000a,8)
 
 
