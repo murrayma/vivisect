@@ -1,3 +1,4 @@
+import sys
 import envi
 import envi.bits as e_bits
 
@@ -63,6 +64,7 @@ class AnalysisMonitor(EmulationMonitor):
         self.fva = fva
         self.onceop = {}
         self.stackmax = 0
+        self.stackargs = {}
         self.operrefs = []
         self.callcomments = []
         self._dynamic_branch_handlers = []
@@ -115,7 +117,7 @@ class AnalysisMonitor(EmulationMonitor):
 
     def addDynamicBranchHandler(self, cb):
         '''
-        Add a callback handler for dynamic branches the code-flow resolver 
+        Add a callback handler for dynamic branches the code-flow resolver
         doesn't know what to do with
         '''
         if cb in self._dynamic_branch_handlers:
@@ -140,6 +142,7 @@ class AnalysisMonitor(EmulationMonitor):
                     stackoff = emu.getStackOffset( operva )
                     if stackoff >= 0: # None is not >= 0 ;)
                         self.stackmax = max( self.stackmax, stackoff )
+                        self.stackargs[stackoff] = True
 
                     self.operrefs.append((starteip,i,operva,o.tsize,stackoff,discrete))
 
@@ -151,7 +154,7 @@ class AnalysisMonitor(EmulationMonitor):
                         try:
                             cb(self, emu, op, starteip)
                         except Exception, e:
-                        logger.exception('error with dyn branch handler (%r)', repr(cb))
+                            logger.exception('error with dyn branch handler (%r)', repr(cb))
 
     def apicall(self, emu, op, pc, api, argv):
 

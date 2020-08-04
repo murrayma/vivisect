@@ -33,12 +33,13 @@ def analyzePLT(vw, ssva, ssize):
 
         branchvas = []
         while sva < nextseg:
+            logger.debug('analyzePLT(0x%x, 0x%x) first pass:  sva: 0x%x   nextseg: 0x%x', ssva, ssize, sva, nextseg)
             if vw.getLocation(sva) is None:
                 logger.info('making code: 0x%x', sva)
                 try:
                     vw.makeCode(sva)
-                except Exception as e:
-                    logger.exception('0x%x: exception: %r', sva, e)
+                except Exception:
+                    logger.exception('0x%x: exception', sva)
 
             ltup = vw.getLocation(sva)
 
@@ -109,7 +110,7 @@ def analyzePLT(vw, ssva, ssize):
 
         # now determine plt_size (basically, how far to backup from the branch to find the start of function
         # *don't* use the first entry, because the trampoline is often odd...
-        plt_size = 0    # not including the branch instruction size?
+        plt_size = 0
         bridx = 1
 
         # if has_tramp, we need to skip two to make sure we're not analyzing the first real plt
@@ -123,6 +124,7 @@ def analyzePLT(vw, ssva, ssize):
 
         # start off pointing at the branch location which bounces through GOT.
         loc = vw.getLocation(brva)
+
         # grab the size of the plt branch instruction for our benefit
         pltbrsz = loc[vivisect.L_SIZE]
 
@@ -146,8 +148,9 @@ def analyzePLT(vw, ssva, ssize):
                 break
 
             op = vw.parseOpcode(lva)
-            if op.mnem == 'nop':    # should we let architectures set a "nop" iflag
-                # we've run into inter-plt padding - curse you, i386 gcc!
+            nopbytes = vw.arch.archGetNopInstr()
+            if op.mnem == 'nop' or vw.readMemory(lva, len(nopbytes)) == nopbytes:
+                # we've run into inter-plt padding - curse you, gcc!
                 break
 
             plt_size += lsz
@@ -377,39 +380,5 @@ def analyzeFunction(vw, funcva):
 
     logger.info('makeFunctionThunk(0x%x, "plt_%s")', funcva, funcname)
     vw.makeFunctionThunk(funcva, "plt_" + funcname, addVa=False, filelocal=True)
-
-
-def dbg_interact(lcls, gbls):
-    intro = "Let's interact!"
-    try:
-        import IPython.Shell
-        ipsh = IPython.Shell.IPShell(argv=[''], user_ns=lcls, user_global_ns=gbls)
-        print(intro)
-        ipsh.mainloop()
-
-    except ImportError as e:
-        try:
-            from IPython.terminal.interactiveshell import TerminalInteractiveShell
-            ipsh = TerminalInteractiveShell()
-            ipsh.user_global_ns.update(gbls)
-            ipsh.user_global_ns.update(lcls)
-            ipsh.autocall = 2       # don't require parenthesis around *everything*.  be smart!
-            print(intro)
-            ipsh.mainloop()
-        except ImportError as e:
-            try:
-                from IPython.frontend.terminal.interactiveshell import TerminalInteractiveShell
-                ipsh = TerminalInteractiveShell()
-                ipsh.user_global_ns.update(gbls)
-                ipsh.user_global_ns.update(lcls)
-                ipsh.autocall = 2       # don't require parenthesis around *everything*.  be smart!
-
-                print(intro)
-                ipsh.mainloop()
-            except ImportError, e:
-                print(e)
-                shell = code.InteractiveConsole(gbls)
-                print(intro)
-                shell.interact()
 
 

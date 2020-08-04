@@ -127,6 +127,8 @@ archcalls = {
     'i386': 'cdecl',
     'amd64': 'sysvamd64call',
     'arm': 'armcall',
+    'thumb':'armcall',
+    'thumb16':'armcall',
     'vle': 'ppccall',
     'ppc32-embedded': 'ppccall',
     'ppc32-server': 'ppccall',
@@ -227,7 +229,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
         maps.sort()
 
         merged = []
-        for i in xrange(len(maps)):
+        for i in range(len(maps)):
 
             if merged and maps[i][0] == (merged[-1][0] + merged[-1][1]):
                 merged[-1][1] += maps[i][1]

@@ -7,9 +7,6 @@ from envi import InvalidInstruction
 from envi.archs.arm.disasm import *
 armd = ArmDisasm()
 
-#FIXME: check to make sure ldrb/ldrh are handled consistently, wrt: IF_B and IF_H.  emulation would like all the same.
-
-
 
 O_REG = 0
 O_IMM = 1
@@ -20,8 +17,11 @@ OperType = (
     ArmImmOper,
     ArmPcOffsetOper,
     )
-def shmaskval(value, shval, mask):  #FIXME: unnecessary to make this another fn call.  will be called a bajillion times.
+
+
+def shmaskval(value, shval, mask):
     return (value >> shval) & mask
+
 
 class simpleops:
     def __init__(self, *operdef):
@@ -34,7 +34,7 @@ class simpleops:
             ret.append( oper )
         return COND_AL, (ret), None
 
-#imm5_rm_rd  = simpleops((O_REG, 0, 0x7), (O_REG, 3, 0x7), (O_IMM, 6, 0x1f))
+
 rm_rn_rd    = simpleops((O_REG, 0, 0x7), (O_REG, 3, 0x7), (O_REG, 6, 0x7))
 imm3_rn_rd  = simpleops((O_REG, 0, 0x7), (O_REG, 3, 0x7), (O_IMM, 6, 0x7))
 imm8_rd     = simpleops((O_REG, 8, 0x7), (O_IMM, 0, 0xff))
@@ -43,9 +43,8 @@ rn_rdm      = simpleops((O_REG, 0, 0x7), (O_REG, 3, 0x7))
 rm_rdn      = simpleops((O_REG, 0, 0x7), (O_REG, 3, 0x7))
 rm_rd_imm0  = simpleops((O_REG, 0, 0x7), (O_REG, 3, 0x7), (O_IMM, 0, 0))
 imm8        = simpleops((O_IMM, 8, 0xff))
-#imm11       = simpleops((O_IMM, 11, 0x7ff))
-
 sh4_imm1    = simpleops((O_IMM, 3, 0x1))
+
 
 def d1_rm4_rd3(va, value):
     # 0 1 0 0 0 1 0 0 DN(1) Rm(4) Rdn(3)
@@ -53,6 +52,7 @@ def d1_rm4_rd3(va, value):
     rd = shmaskval(value, 0, 0x7) + rdbit
     rm = shmaskval(value, 3, 0xf)
     return COND_AL,(ArmRegOper(rd, va=va),ArmRegOper(rm, va=va)), None
+
 
 def rm_rn_rt(va, value):
     tsize = (4,2,1,1,4,2,1,2)[(value>>9)&7]
@@ -63,6 +63,7 @@ def rm_rn_rt(va, value):
     oper1 = ArmRegOffsetOper(rn, rm, va, pubwl=0x18, tsize=tsize)
     return COND_AL,(oper0,oper1), None
 
+
 def imm54_rn_rt(va, value):
     imm = shmaskval(value, 4, 0x7c)
     rn = shmaskval(value, 3, 0x7)
@@ -70,6 +71,7 @@ def imm54_rn_rt(va, value):
     oper0 = ArmRegOper(rt, va=va)
     oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18, tsize=4)
     return COND_AL,(oper0,oper1), None
+
 
 def imm55_rn_rt(va, value):
     imm = shmaskval(value, 5, 0x3e)
@@ -79,6 +81,7 @@ def imm55_rn_rt(va, value):
     oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18, tsize=2)
     return COND_AL,(oper0,oper1), None
 
+
 def imm56_rn_rt(va, value):
     imm = shmaskval(value, 6, 0x1f)
     rn = shmaskval(value, 3, 0x7)
@@ -86,6 +89,7 @@ def imm56_rn_rt(va, value):
     oper0 = ArmRegOper(rt, va=va)
     oper1 = ArmImmOffsetOper(rn, imm, (va&0xfffffffc)+4, pubwl=0x18, tsize=1)
     return COND_AL,(oper0,oper1), None
+
 
 def rd_sp_imm8(va, value): # add
     rd = shmaskval(value, 8, 0x7)
@@ -95,6 +99,7 @@ def rd_sp_imm8(va, value): # add
     oper2 = ArmImmOper(imm, va=va)
     return COND_AL,(oper0,oper1,oper2), None
 
+
 def rd_sp_imm8d(va, value): # add
     rd = shmaskval(value, 8, 0x7)
     imm = shmaskval(value, 0, 0xff) * 4
@@ -102,6 +107,7 @@ def rd_sp_imm8d(va, value): # add
     # pre-compute PC relative addr
     oper1 = ArmImmOffsetOper(REG_SP, imm, (va&0xfffffffc)+4, pubwl=0x18)
     return COND_AL,(oper0,oper1), None
+
 
 def rd_pc_imm8(va, value):  # add
     rd = shmaskval(value, 8, 0x7)
@@ -111,6 +117,7 @@ def rd_pc_imm8(va, value):  # add
     oper1 = ArmImmOper((va&0xfffffffc) + 4 + imm)
     return COND_AL,(oper0,oper1), None
 
+
 def rd_pc_imm8d(va, value):  # add
     rd = shmaskval(value, 8, 0x7)
     imm = e_bits.signed(shmaskval(value, 0, 0xff), 1) * 4
@@ -119,12 +126,14 @@ def rd_pc_imm8d(va, value):  # add
     oper1 = ArmImmOffsetOper(REG_PC, imm, (va&0xfffffffc)+4, pubwl=0x18)
     return COND_AL,(oper0,oper1), None
 
+
 def rt_pc_imm8d(va, value): # ldr
     rt = shmaskval(value, 8, 0x7)
     imm = e_bits.unsigned((value & 0xff), 1) << 2
     oper0 = ArmRegOper(rt, va=va)
     oper1 = ArmImmOffsetOper(REG_PC, imm, (va&0xfffffffc))
     return COND_AL,(oper0,oper1), None
+
 
 def rm4_shift3(va, value): #bx/blx
     iflags = None
@@ -191,7 +200,7 @@ misc_ctl_instrs = (
 )
 
 
-def branch_misc(va, val, val2): # bl and misc control
+def branch_misc(va, val, val2):  # bl and misc control
     op = (val >> 4) & 0b1111111
     op1 = (val2 >> 12) & 0b111
     op2 = (val2 >> 8) & 0b1111
@@ -339,7 +348,7 @@ def branch_misc(va, val, val2): # bl and misc control
 
                 if not (imod or m):
                     # hint
-                    mnem = "CPS Hint...  fix me"
+                    mnem = "CPS Hint"
                     
                 if imod & 2:
                     opers = [
@@ -358,20 +367,17 @@ def branch_misc(va, val, val2): # bl and misc control
 
             return COND_AL, opcode, mnem, opers, flags, 0
 
-        #elif op == 0b0111011:
-        #    raise Exception("FIXME:  Misc control instrs p A6-235")  should be covered by "op & 0b111 == 0b011"
-
         elif op == 0b0111100:
             raise Exception("FIXME:  BXJ p A8-352")
 
-        #elif op == 0b0111101:   # subs PC, LR, #imm (see special case ERET above)...  unnecessary?
-        #    imm8 = val2 & 0xff
-        #    opers = (
-        #            ArmRegOper(REG_PC),
-        #            ArmRegOper(REG_LR),
-        #            ArmImmOper(imm8),
-        #            )
-        #    return COND_AL, None, 'sub', opers, IF_PSR_S, 0
+        elif op == 0b0111101:   # subs PC, LR, #imm (see special case ERET above)...
+            imm8 = val2 & 0xff
+            opers = (
+                    ArmRegOper(REG_PC),
+                    ArmRegOper(REG_LR),
+                    ArmImmOper(imm8),
+                    )
+            return COND_AL, None, 'sub', opers, IF_PSR_S, 0
 
         elif op == 0b0111110:
             Rd = (val2 >> 8) & 0xf
@@ -586,9 +592,9 @@ def it_hints(va, val):
         itoper = ThumbITOper(mask, firstcond)
         count, cond, data = itoper.getCondData()
         nextfew = it_strs[count][data]
-        mnem = 'it' + nextfew
+        mnem = 'it' + nextfew   # as much as it pains me to strcat here.
 
-        return COND_AL,(itoper,), 0, None, mnem
+        return COND_AL,(itoper,), 0, INS_IT, mnem
 
     opcode, mnem = it_hints_others[firstcond]
 
@@ -618,15 +624,18 @@ class ThumbITOper(ArmOperand):
         fiz = self.firstcond & 1
         flags = 1
         count = self.getCondInstrCount()
-        print bin(fiz), bin(self.mask)
+        #print bin(fiz), bin(self.mask)
         for x in range(count):
             bit = bool(((self.mask>>(3-x))&1) == fiz)
-            print x, bit, bin(flags)
+            #print x, bit, bin(flags)
             flags |= (bit << (x+1))
 
         return flags
 
     def getCondData(self):
+        '''
+        deprecated: 2020-06-24
+        '''
         mask = self.mask
         cond = self.firstcond
         count = 0
@@ -647,14 +656,19 @@ class ThumbITOper(ArmOperand):
 
         return count, self.firstcond, data
 
+    def getITSTATEdata(self):
+        '''
+        this is the data to put into the ITSTATE register (1 byte of the CPSR)
+        '''
+        return self.firstcond, self.mask
+
     def repr(self, op):
         mask = self.mask
 
         count, cond, data = self.getCondData()
 
         fcond = cond_codes.get(cond)
-        nextfew = it_strs[count][data]
-        return "%s %s" % (nextfew, fcond)
+        return "%s" % (fcond)
 
     def render(self, mcanv, op, idx):
         mask = self.mask
@@ -662,8 +676,7 @@ class ThumbITOper(ArmOperand):
         count, cond, data = self.getCondData()
 
         fcond = cond_codes.get(cond)
-        nextfew = it_strs[count][data]
-        mcanv.addText("%s %s" % (nextfew, fcond))
+        mcanv.addText("%s" % (fcond))
 
     def getOperValue(self, idx, emu=None):
         return None
@@ -738,7 +751,7 @@ def dp_mod_imm_32(va, val1, val2):
     if Rd==15 and S:
         #raise Exception("dp_mod_imm_32 - FIXME: secondary dp encoding")
         mnem = dp_secondary[dpop]
-        if mnem == None:
+        if mnem is None:
             raise Exception("dp_mod_imm_32: Rd==15, S, but dpop doesn't have a secondary! va:%x, %x%x" % (va, val1, val2))
 
         if S:
@@ -943,7 +956,7 @@ def parallel_misc_32(va, val1, val2):
 
     pardata = parallel_misc_info[signed_misc].get(opidx)
 
-    if pardata == None:
+    if pardata is None:
         return shift_or_ext_32(va, val1, val2)
 
     opcode, mnem, flags = pardata
@@ -1370,13 +1383,13 @@ def smull_32(va, val1, val2):
     op2 = (val2 >> 4) & 0xf
 
     secondary = smulls_info.get(op1)
-    if secondary == None:
+    if secondary is None:
         raise envi.InvalidInstruction(      #FIXME!!!!
                 mesg="smull invalid decode: op1",
                 bytez=struct.pack("<HH", val, val2), va=va-4)
 
     secout = secondary.get(op2)
-    if secout == None:
+    if secout is None:
         raise envi.InvalidInstruction(      #FIXME!!!!
                 mesg="smull invalid decode: op2",
                 bytez=struct.pack("<HH", val, val2), va=va-4)
@@ -1432,15 +1445,20 @@ mov_ris_alt = (
                 )
 def mov_reg_imm_shift_32(va, val1, val2):
     optype = (val2>>4) & 3
+
+    # imm is made of bits ((val2>>12)&7) concat'd with ((val2>>6)&3)
+    # the shifting is different to reduce the number of operations
     imm = ((val2>>10)&0x1c) | ((val2>>6)&3)
     rm = val2 & 0xf
     rd = (val2 >> 8) & 0xf
     s = (val1 >> 4) & 1
 
-    if imm == 0 and optype in (0,3):
+    # there are two types of encodings, one with imm == 0
+    if imm == 0:
         opcode, mnem, opcnt = mov_ris_alt[optype]
     else:
         opcode, mnem, opcnt = mov_ris_ops[optype]
+
     if s:
         flags = IF_PSR_S
     else:
@@ -1551,7 +1569,7 @@ def coproc_simd_32(va, val1, val2):
     #print "coproc_simd_32"
     ### return armd.doDecode(va, val32, 'THUMB2', 0)            lol!  trying to leverage Arm code that just aint there!  CONSIDER: finish this, then move it into ARM, then call there....
     # FIXME: coalesce ARM/Thumb32 decoding schemes so they can use the same decoders  (ie.  they return the same things:  opcode, mnem, olist, flags)
-    # FIXME: MANY THUMB2 instruction encodings model their "Always Execute" ARM equivalents.
+    # NOTE: MANY THUMB2 instruction encodings model their "Always Execute" ARM equivalents.
     coproc = (val2>>8) & 0xf
     op1 =    (val1>>4) & 0x3f
     op =     (val2>>4) & 1
@@ -1561,7 +1579,6 @@ def coproc_simd_32(va, val1, val2):
 
     #print bin(coproc), bin(op1),bin(op)
     if op1 & 0b110000 == 0b110000:
-        print("AdvSIMD from CoprocSIMD.  How did we get here?  This should be impossible!")
         return adv_simd_32(va, val1, val2)
 
     if op1 & 0b111110 == 0:
@@ -1673,7 +1690,6 @@ def coproc_simd_32(va, val1, val2):
 
     else:
         # coproc = 0b101x   - ARM7A/M p251
-        # FIXME: REMOVE WHEN DONE IMPLEMENTING
         opcode = 0
         iflags = 0
         opers = []
@@ -1689,57 +1705,50 @@ def coproc_simd_32(va, val1, val2):
 
         elif op1 & 0b111110 == 0b000100:
             # adv simd fp (A7-277)
-            print("AdvSIMD from CoprocSIMD... do we actually end up here?")
-            return adv_simd_32(va, val1, val2)
+            # 64-bit transfers between ARM core and extension registers on page A7-279
+
+            return adv_xfer_arm_ext_64(va, val1, val2)
 
         elif op1 & 0b100000 == 0 and not (op1 & 0b111010 == 0):
-            # extension register load/store instructions
+            # extension register load/store instructions A7-274
             Rn = val1 & 0xf
 
             # adv simd fp (a7-272)
             tmop1 = op1 & 0b11011
             
-            if op1 & 0b11110 == 0b00100:
-                # 64 bit transverse between ARM core and extension registers (a7-277)
-                bytez = struct.pack("<HH", val1, val2)
-                raise envi.InvalidInstruction(      #FIXME!!!!
-                        mesg="IMPLEMENT: 64-bit transverse between ARM core and extension registers",
-                        bytez=bytez, va=va)
-
-
-            # EXPECT TO NOT REACH HERE UNLESS WE MEAN BUSINESS.  otherwise this needs to be in an else:
             if (op1 & 0b11010) in (0b10, 0b11010):
                 bytez = struct.pack("<HH", val1, val2)
                 raise InvalidInstruction(mesg="INVALID ENCODING", bytez=bytez, va=va)
 
-            l = op1 & 1 # vldm or vstm
+            l = op1 & 1  # vldm or vstm
             indiv = (op1 & 0b10010) == 0b10000
+
             # writeback should be handled by operand
-            imm8 = (val2 & 0xff) >>1
-            imm32 = imm8 <<3
+            imm8 = (val2 & 0xff) >> 1
+            imm32 = imm8 << 3
 
             # size = 0/1 for 32-bit and 64-bit accordingly
-            size = (val2>>8) & 1    # TODO: Check next three bits must be 0b101
+            size = (val2 >> 8) & 1    # TODO: Check next three bits must be 0b101
 
             pudwl = op1 & 0b11111
 
             # starting extended register
-            D = (pudwl>>2) & 1
-            Vd = val2>>12
+            D = (pudwl >> 2) & 1
+            Vd = val2 >> 12
             d = (Vd << 1) | D
 
             # vpush/vpop
             if (op1 & 0b11011) in (0b01011, 0b10010) and Rn == REG_SP:
-                mnem, opcode = (('vpush',INS_VPUSH), ('vpop',INS_VPOP))[l]
+                mnem, opcode = (('vpush', INS_VPUSH), ('vpop', INS_VPOP))[l]
                 opers = (
-                        ArmExtRegListOper(d>>size, imm8, size),
+                        ArmExtRegListOper(d >> size, imm8, size),
                         )
 
             else:
                 oflags = 0
 
-                mnemidx = l | (indiv<<1)
-                mnem, opcode = (('vstm',INS_VSTM),('vldm',INS_VLDM),('vstr',INS_VSTR),('vldr',INS_VLDR))[mnemidx]
+                mnemidx = l | (indiv << 1)
+                mnem, opcode = (('vstm', INS_VSTM), ('vldm', INS_VLDM), ('vstr', INS_VSTR), ('vldr', INS_VLDR))[mnemidx]
                 # figure out IA/DB/etc...  and Writeback
 
                 # inc-after or dec-before?
@@ -1768,7 +1777,7 @@ def coproc_simd_32(va, val1, val2):
                             )
         else:
             bytez = struct.pack("<HH", val1, val2)
-            raise InvalidInstruction(mesg="INVALID ENCODING: adv_xfer_arm_ext_32", bytez=bytez, va=va)
+            raise InvalidInstruction(mesg="INVALID ENCODING: coproc_advsimd_fp", bytez=bytez, va=va)
 
     return COND_AL, opcode, mnem, opers, iflags, simdflags
 
@@ -1907,6 +1916,81 @@ def adv_xfer_arm_ext_32(va, val1, val2):
     return COND_AL, opcode, mnem, opers, iflags, simdflags
 
 
+def adv_xfer_arm_ext_64(va, val1, val2):
+    # VMOV instruction decoding
+    # except: for coprocs 10 and 11. MRRC and MCRR
+    val = (val1 << 16) | val2
+
+    if (val1 >> 12) & 0xf == 0b1111:
+        bytez = struct.pack("<I", val)
+        raise InvalidInstruction(mesg="INVALID ENCODING: adv_xfer_arm_ext_64: cannot be T==1 in Thumb, or cond=0b1111 in ARM", bytez=bytez, va=va)
+
+    op = (val2 >> 4) & 0xf
+    C = (val2 >> 8) & 1
+
+    if op & 0b1101 == 1:
+        # the decoding for both directions is mostly the same
+        op = (val1 >> 4) & 1
+
+        rt2 = val1 & 0xf
+        rt = (val2 >> 12) & 0xf
+
+        vm = val2 & 0xf
+        m = (val2 >> 5) & 1
+        Vm = (vm << 1) | m
+
+        if C == 0:
+            # 2xARM <-> 2xSinglePrecision registers
+            Vm = rctx.getRegisterIndex('s%d' % Vm)
+
+            if op == 0:
+                # from ARM to Ext regs
+                opers = (
+                        ArmRegOper(Vm, va),
+                        ArmRegOper(Vm + 1, va),
+                        ArmRegOper(rt, va),
+                        ArmRegOper(rt2, va),
+                        )
+
+            else:
+                # from Ext to ARM regs
+                opers = (
+                        ArmRegOper(rt, va),
+                        ArmRegOper(rt2, va),
+                        ArmRegOper(Vm, va),
+                        ArmRegOper(Vm + 1, va),
+                        )
+
+        else:
+            # 2xARM <-> 1xDoublePrecision register
+            Vm = rctx.getRegisterIndex('d%d' % Vm)
+
+            if op == 0:
+                # from ARM to Ext regs
+                opers = (
+                        ArmRegOper(Vm, va),
+                        ArmRegOper(rt, va),
+                        ArmRegOper(rt2, va),
+                        )
+
+            else:
+                # from Ext to ARM regs
+                opers = (
+                        ArmRegOper(rt, va),
+                        ArmRegOper(rt2, va),
+                        ArmRegOper(Vm, va),
+                        )
+
+    else:
+        bytez = struct.pack("<I", val)
+        raise InvalidInstruction(mesg="INVALID ENCODING: adv_xfer_arm_ext_64: op is not '00x1'", bytez=bytez, va=va)
+
+    '''
+    In [8]: ad.disasm('345b46ec'.decode('hex'), 0, 0)
+    Out[8]: vmov d9, r5, r6
+    '''
+    return COND_AL, INS_VMOV, 'vmov', opers, 0, 0
+
 bcc_ops = {
     0b0000:    (INS_BCC,'beq',  envi.IF_COND, COND_EQ),
     0b0001:    (INS_BCC,'bne',  envi.IF_COND, COND_NE),
@@ -1931,23 +2015,22 @@ bcc_ops = {
 # operdef is:
 # ( (otype, oshift, omask), ...)
 
-# FIXME: thumb and arm opcode numbers don't line up. - FIX
 thumb_base = [
-    ('0000000001',  ( INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
-    ('0000000000',  ( INS_MOV,'mov',     rm_rd, IF_PSR_S)), # MOVS<c> <Rd>,<Rm>
-    ('000000001',   ( INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
-    ('00000001',    ( INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
-    ('0000001',     ( INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
-    ('000001',      ( INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
-    ('00001',       ( INS_LSR,'lsr',     imm5_rm_rd, IF_PSR_S)), # LSR<c> <Rd>,<Rm>,#<imm>
-    ('00010',       ( INS_ASR,'asr',     imm5_rm_rd, IF_PSR_S)), # ASR<c> <Rd>,<Rm>,#<imm>
-    ('0001100',     ( INS_ADD,'add',     rm_rn_rd,   IF_PSR_S)), # ADD<c> <Rd>,<Rn>,<Rm>
-    ('0001101',     ( INS_SUB,'sub',     rm_rn_rd,   IF_PSR_S)), # SUB<c> <Rd>,<Rn>,<Rm>
-    ('0001110',     ( INS_ADD,'add',     imm3_rn_rd, IF_PSR_S)), # ADD<c> <Rd>,<Rn>,#<imm3>
-    ('0001111',     ( INS_SUB,'sub',     imm3_rn_rd, IF_PSR_S)), # SUB<c> <Rd>,<Rn>,#<imm3>
-    ('00100',       ( INS_MOV,'mov',     imm8_rd,    IF_PSR_S)), # MOV<c> <Rd>,#<imm8>
-    ('00101',       ( INS_CMP,'cmp',     imm8_rd,    0)), # CMP<c> <Rn>,#<imm8>
-    ('00110',       ( INS_ADD,'add',     imm8_rd,    IF_PSR_S)), # ADD<c> <Rdn>,#<imm8>
+    ('0000000001',  (INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
+    ('0000000000',  (INS_MOV,'mov',     rm_rd, IF_PSR_S)),      # MOVS<c> <Rd>,<Rm>
+    ('000000001',   (INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
+    ('00000001',    (INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
+    ('0000001',     (INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
+    ('000001',      (INS_LSL,'lsl',     imm5_rm_rd, IF_PSR_S)), # LSL<c> <Rd>,<Rm>,#<imm5>
+    ('00001',       (INS_LSR,'lsr',     imm5_rm_rd, IF_PSR_S)), # LSR<c> <Rd>,<Rm>,#<imm>
+    ('00010',       (INS_ASR,'asr',     imm5_rm_rd, IF_PSR_S)), # ASR<c> <Rd>,<Rm>,#<imm>
+    ('0001100',     (INS_ADD,'add',     rm_rn_rd,   IF_PSR_S)), # ADD<c> <Rd>,<Rn>,<Rm>
+    ('0001101',     (INS_SUB,'sub',     rm_rn_rd,   IF_PSR_S)), # SUB<c> <Rd>,<Rn>,<Rm>
+    ('0001110',     (INS_ADD,'add',     imm3_rn_rd, IF_PSR_S)), # ADD<c> <Rd>,<Rn>,#<imm3>
+    ('0001111',     (INS_SUB,'sub',     imm3_rn_rd, IF_PSR_S)), # SUB<c> <Rd>,<Rn>,#<imm3>
+    ('00100',       (INS_MOV,'mov',     imm8_rd,    IF_PSR_S)), # MOV<c> <Rd>,#<imm8>
+    ('00101',       (INS_CMP,'cmp',     imm8_rd,    0)),        # CMP<c> <Rn>,#<imm8>
+    ('00110',       (INS_ADD,'add',     imm8_rd,    IF_PSR_S)), # ADD<c> <Rdn>,#<imm8>
     ('00111',       (INS_SUB,'sub',     imm8_rd,    IF_PSR_S)), # SUB<c> <Rdn>,#<imm8>
     # Data processing instructions
     ('0100000000',  (INS_AND,'and',     rm_rdn,     IF_PSR_S)), # AND<c> <Rdn>,<Rm>
@@ -1958,57 +2041,57 @@ thumb_base = [
     ('0100000101',  (INS_ADC,'adc',     rm_rdn,     IF_PSR_S)), # ADC<c> <Rdn>,<Rm>
     ('0100000110',  (INS_SBC,'sbc',     rm_rdn,     IF_PSR_S)), # SBC<c> <Rdn>,<Rm>
     ('0100000111',  (INS_ROR,'ror',     rm_rdn,     IF_PSR_S)), # ROR<c> <Rdn>,<Rm>
-    ('0100001000',  (INS_TST,'tst',     rm_rd,      0)), # TST<c> <Rn>,<Rm>
+    ('0100001000',  (INS_TST,'tst',     rm_rd,      0)),        # TST<c> <Rn>,<Rm>
     ('0100001001',  (INS_RSB,'rsb',     rm_rd_imm0, IF_PSR_S)), # RSB<c> <Rd>,<Rn>,#0
-    ('0100001010',  (INS_CMP,'cmp',     rm_rd,      0)), # CMP<c> <Rn>,<Rm>
-    ('0100001011',  (INS_CMN,'cmn',     rm_rd,      0)), # CMN<c> <Rn>,<Rm>
+    ('0100001010',  (INS_CMP,'cmp',     rm_rd,      0)),        # CMP<c> <Rn>,<Rm>
+    ('0100001011',  (INS_CMN,'cmn',     rm_rd,      0)),        # CMN<c> <Rn>,<Rm>
     ('0100001100',  (INS_ORR,'orr',     rm_rdn,     IF_PSR_S)), # ORR<c> <Rdn>,<Rm>
     ('0100001101',  (INS_MUL,'mul',     rn_rdm,     IF_PSR_S)), # MUL<c> <Rdm>,<Rn>,<Rdm>
     ('0100001110',  (INS_BIC,'bic',     rm_rdn,     IF_PSR_S)), # BIC<c> <Rdn>,<Rm>
-    ('0100001111',  (INS_MVN,'mvn',     rm_rd,      0)), # MVN<c> <Rd>,<Rm>
+    ('0100001111',  (INS_MVN,'mvn',     rm_rd,      0)),        # MVN<c> <Rd>,<Rm>
     # Special data in2tructions and branch and exchange
-    ('0100010000',  (INS_ADD,'add',     d1_rm4_rd3, 0)), # ADD<c> <Rdn>,<Rm>
-    ('0100010001',  (INS_ADD,'add',     d1_rm4_rd3, 0)), # ADD<c> <Rdn>,<Rm>
-    ('010001001',   (INS_ADD,'add',     d1_rm4_rd3, 0)), # ADD<c> <Rdn>,<Rm>
-    ('010001010',   (INS_CMP,'cmp',     d1_rm4_rd3, 0)), # CMP<c> <Rn>,<Rm>
-    ('010001011',   (INS_CMP,'cmp',     d1_rm4_rd3, 0)), # CMP<c> <Rn>,<Rm>
-    ('01000110',    (INS_MOV,'mov',     d1_rm4_rd3, 0)), # MOV<c> <Rd>,<Rm>
+    ('0100010000',  (INS_ADD,'add',     d1_rm4_rd3, 0)),        # ADD<c> <Rdn>,<Rm>
+    ('0100010001',  (INS_ADD,'add',     d1_rm4_rd3, 0)),        # ADD<c> <Rdn>,<Rm>
+    ('010001001',   (INS_ADD,'add',     d1_rm4_rd3, 0)),        # ADD<c> <Rdn>,<Rm>
+    ('010001010',   (INS_CMP,'cmp',     d1_rm4_rd3, 0)),        # CMP<c> <Rn>,<Rm>
+    ('010001011',   (INS_CMP,'cmp',     d1_rm4_rd3, 0)),        # CMP<c> <Rn>,<Rm>
+    ('01000110',    (INS_MOV,'mov',     d1_rm4_rd3, 0)),        # MOV<c> <Rd>,<Rm>
     ('010001110',   (INS_BL,'bx',      rm4_shift3, envi.IF_NOFALL)), # BX<c> <Rm>       # FIXME: check for IF_RET
     ('010001111',   (INS_BLX,'blx',     rm4_shift3, envi.IF_CALL)), # BLX<c> <Rm>
     # Load from Litera7 Pool
-    ('01001',       (INS_LDR,'ldr',     rt_pc_imm8d, 0)), # LDR<c> <Rt>,<label>
+    ('01001',       (INS_LDR,'ldr',     rt_pc_imm8d, 0)),       # LDR<c> <Rt>,<label>
     # Load/Stor single data item
-    ('0101000',     (INS_STR,'str',     rm_rn_rt,   0)), # STR<c> <Rt>,[<Rn>,<Rm>]
-    ('0101001',     (INS_STRH,'str',    rm_rn_rt,   IF_H)), # STRH<c> <Rt>,[<Rn>,<Rm>]
-    ('0101010',     (INS_STRB,'str',    rm_rn_rt,   IF_B)), # STRB<c> <Rt>,[<Rn>,<Rm>]
+    ('0101000',     (INS_STR,'str',     rm_rn_rt,   0)),        # STR<c> <Rt>,[<Rn>,<Rm>]
+    ('0101001',     (INS_STRH,'str',    rm_rn_rt,   IF_H)),     # STRH<c> <Rt>,[<Rn>,<Rm>]
+    ('0101010',     (INS_STRB,'str',    rm_rn_rt,   IF_B)),     # STRB<c> <Rt>,[<Rn>,<Rm>]
     ('0101011',     (INS_LDRSB,'ldr',   rm_rn_rt,  IF_S | IF_B)), # LDRSB<c> <Rt>,[<Rn>,<Rm>]
-    ('0101100',     (INS_LDR,'ldr',     rm_rn_rt,   0)), # LDR<c> <Rt>,[<Rn>,<Rm>]
-    ('0101101',     (INS_LDRH,'ldr',    rm_rn_rt,   IF_H)), # LDRH<c> <Rt>,[<Rn>,<Rm>]
-    ('0101110',     (INS_LDRB,'ldr',    rm_rn_rt,   IF_B)), # LDRB<c> <Rt>,[<Rn>,<Rm>]
+    ('0101100',     (INS_LDR,'ldr',     rm_rn_rt,   0)),        # LDR<c> <Rt>,[<Rn>,<Rm>]
+    ('0101101',     (INS_LDRH,'ldr',    rm_rn_rt,   IF_H)),     # LDRH<c> <Rt>,[<Rn>,<Rm>]
+    ('0101110',     (INS_LDRB,'ldr',    rm_rn_rt,   IF_B)),     # LDRB<c> <Rt>,[<Rn>,<Rm>]
     ('0101111',     (INS_LDRSH,'ldr',   rm_rn_rt,   IF_S | IF_H)), # LDRSH<c> <Rt>,[<Rn>,<Rm>]
-    ('01100',       (INS_STR,'str',     imm54_rn_rt, 0)), # STR<c> <Rt>, [<Rn>{,#<imm5>}]
-    ('01101',       (INS_LDR,'ldr',     imm54_rn_rt, 0)), # LDR<c> <Rt>, [<Rn>{,#<imm5>}]
-    ('01110',       (INS_STRB,'str',    imm56_rn_rt, IF_B)), # STRB<c> <Rt>,[<Rn>,#<imm5>]
-    ('01111',       (INS_LDRB,'ldr',    imm56_rn_rt, IF_B)), # LDRB<c> <Rt>,[<Rn>{,#<imm5>}]
-    ('10000',       (INS_STRH,'str',    imm55_rn_rt, IF_H)), # STRH<c> <Rt>,[<Rn>{,#<imm>}]
-    ('10001',       (INS_LDRH,'ldr',    imm55_rn_rt, IF_H)), # LDRH<c> <Rt>,[<Rn>{,#<imm>}]
-    ('10010',       (INS_LDR,'str',     rd_sp_imm8d, 0)), # STR<c> <Rt>, [<Rn>{,#<imm>}]
-    ('10011',       (INS_LDR,'ldr',     rd_sp_imm8d, 0)), # LDR<c> <Rt>, [<Rn>{,#<imm>}]
+    ('01100',       (INS_STR,'str',     imm54_rn_rt, 0)),       # STR<c> <Rt>, [<Rn>{,#<imm5>}]
+    ('01101',       (INS_LDR,'ldr',     imm54_rn_rt, 0)),       # LDR<c> <Rt>, [<Rn>{,#<imm5>}]
+    ('01110',       (INS_STRB,'str',    imm56_rn_rt, IF_B)),    # STRB<c> <Rt>,[<Rn>,#<imm5>]
+    ('01111',       (INS_LDRB,'ldr',    imm56_rn_rt, IF_B)),    # LDRB<c> <Rt>,[<Rn>{,#<imm5>}]
+    ('10000',       (INS_STRH,'str',    imm55_rn_rt, IF_H)),    # STRH<c> <Rt>,[<Rn>{,#<imm>}]
+    ('10001',       (INS_LDRH,'ldr',    imm55_rn_rt, IF_H)),    # LDRH<c> <Rt>,[<Rn>{,#<imm>}]
+    ('10010',       (INS_LDR,'str',     rd_sp_imm8d, 0)),       # STR<c> <Rt>, [<Rn>{,#<imm>}]
+    ('10011',       (INS_LDR,'ldr',     rd_sp_imm8d, 0)),       # LDR<c> <Rt>, [<Rn>{,#<imm>}]
     # Generate PC relative address
-    ('10100',       (INS_ADD,'add',     rd_pc_imm8, 0)), # ADD<c> <Rd>,<label>
+    ('10100',       (INS_ADD,'add',     rd_pc_imm8, 0)),        # ADD<c> <Rd>,<label>
     # Generate SP rel5tive address
-    ('10101',       (INS_ADD,'add',     rd_sp_imm8, 0)), # ADD<c> <Rd>,SP,#<imm>
+    ('10101',       (INS_ADD,'add',     rd_sp_imm8, 0)),        # ADD<c> <Rd>,SP,#<imm>
     # Miscellaneous in6tructions
-    ('1011001000',  (INS_SXTH,'sxth',    rm_rd,      0)), # SXTH<c> <Rd>, <Rm>
-    ('1011001001',  (INS_SXTB,'sxtb',    rm_rd,      0)), # SXTB<c> <Rd>, <Rm>
-    ('1011001010',  (INS_UXTH,'uxth',    rm_rd,      0)), # UXTH<c> <Rd>, <Rm>
-    ('1011001011',  (INS_UXTB,'uxtb',    rm_rd,      0)), # UXTB<c> <Rd>, <Rm>
-    ('1011010',     (INS_PUSH,'push',    push_reglist,    0)), # PUSH <reglist>
-    ('10110110010', (INS_SETEND,'setend',  sh4_imm1,   0)), # SETEND <endian_specifier>
-    ('10110110011', (INS_CPS,'cps',     cps16,0)), # CPS<effect> <iflags>
-    ('1011011000',  (INS_PUSH,'push',    push_reglist,    0)), # PUSH <reglist>
-    ('101101101',   (INS_PUSH,'push',    push_reglist,    0)), # PUSH <reglist>
-    ('10110111',    (INS_PUSH,'push',    push_reglist,    0)), # PUSH <reglist>
+    ('1011001000',  (INS_SXTH,'sxth',    rm_rd,      0)),       # SXTH<c> <Rd>, <Rm>
+    ('1011001001',  (INS_SXTB,'sxtb',    rm_rd,      0)),       # SXTB<c> <Rd>, <Rm>
+    ('1011001010',  (INS_UXTH,'uxth',    rm_rd,      0)),       # UXTH<c> <Rd>, <Rm>
+    ('1011001011',  (INS_UXTB,'uxtb',    rm_rd,      0)),       # UXTB<c> <Rd>, <Rm>
+    ('1011010',     (INS_PUSH,'push',    push_reglist,    0)),  # PUSH <reglist>
+    ('10110110010', (INS_SETEND,'setend',  sh4_imm1,   0)),     # SETEND <endian_specifier>
+    ('10110110011', (INS_CPS,'cps',     cps16,0)),              # CPS<effect> <iflags>
+    ('1011011000',  (INS_PUSH,'push',    push_reglist,    0)),  # PUSH <reglist>
+    ('101101101',   (INS_PUSH,'push',    push_reglist,    0)),  # PUSH <reglist>
+    ('10110111',    (INS_PUSH,'push',    push_reglist,    0)),  # PUSH <reglist>
     ('10110001',    (INS_CBZ,'cbz',     i_imm5_rn,  envi.IF_COND | envi.IF_BRANCH)), # CBZ{<q>} <Rn>, <label>    # label must be positive, even offset from PC
     ('10111001',    (INS_CBNZ,'cbnz',    i_imm5_rn,  envi.IF_COND | envi.IF_BRANCH)), # CBNZ{<q>} <Rn>, <label>   # label must be positive, even offset from PC
     ('10110011',    (INS_CBZ,'cbz',     i_imm5_rn,  envi.IF_COND | envi.IF_BRANCH)), # CBZ{<q>} <Rn>, <label>    # label must be positive, even offset from PC
@@ -2327,10 +2410,10 @@ class ThumbDisasm:
             cond, nopcode, nmnem, olist, nflags, simdflags = opermkr(va+4, val, val2)
             #print "simdflags: %r" % simdflags
 
-            if nmnem != None:   # allow opermkr to set the mnem
+            if nmnem is not None:   # allow opermkr to set the mnem
                 mnem = nmnem
                 opcode = nopcode
-            if nflags != None:
+            if nflags is not None:
                 flags = nflags
                 #print "FLAGS: ", repr(olist), repr(flags)
             oplen = 4
@@ -2343,7 +2426,7 @@ class ThumbDisasm:
             else:
                 cond, olist, nflags = opnuggets
 
-            if nflags != None:
+            if nflags is not None:
                 flags = nflags
                 #print "FLAGS: ", repr(olist), repr(flags)
             oplen = 2
@@ -2355,7 +2438,7 @@ class ThumbDisasm:
             flags |= self._optype
 
         #print opcode, mnem, olist, flags
-        if (olist != None and 
+        if (olist is not None and 
                 len(olist) and 
                 isinstance(olist[0], ArmRegOper) and
                 olist[0].involvesPC() and 
@@ -2364,7 +2447,7 @@ class ThumbDisasm:
             showop = True
             flags |= envi.IF_NOFALL
 
-        if mnem == None or type(mnem) == int:
+        if mnem is None or type(mnem) == int:
             raise Exception("mnem == %r!  0x%xi (thumb)" % (mnem, opval))
 
         #print "simdflags: %r" % simdflags

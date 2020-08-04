@@ -79,6 +79,8 @@ IF_IE        = 1<<43    # Interrupt Enable flag (used for CPS instruction)
 IF_ID        = 1<<44    # Interrupt Disable flag (used for CPS instruction)
 
 IF_THUMB32   = 1<<50    # thumb32
+IF_ADV_SIMD  = 1<<51    # Advanced SIMD instructions...  it matters
+IF_SYS_MODE  = 1<<52
 
 IF_DAIB_SHFT = 56       # shift-bits to get DAIB bits down to 0.  this chops off the "is DAIB present" bit that the following store.
 IF_DAIB_MASK = 7<<(IF_DAIB_SHFT-1)
@@ -89,14 +91,9 @@ IF_IB        = 7<<(IF_DAIB_SHFT-1)  # Increment Before
 IF_DAIB_B    = 5<<(IF_DAIB_SHFT-1)  # Before mask
 IF_DAIB_I    = 3<<(IF_DAIB_SHFT-1)  # Before mask
 
-###  what do these do?  i can't find reference to them in use
-IFS_VQ        = 1<<1    # Adv SIMD: operation uses saturating arithmetic
-IFS_VR        = 1<<2    # Adv SIMD: operation performs rounding
-IFS_VD        = 1<<3    # Adv SIMD: operation doubles the result
-IFS_VH        = 1<<4    # Adv SIMD: operation halves the result
-IFS_SYS_MODE  = 1<<8    # instruction is encoded to be executed in SYSTEM mode, not USER mode
-####################################333
 
+# NOTE: unlike IF_*, IFS_* are *NOT* flags.  they are indices into the IFS list.
+# thus, opcode.simdflags is *not* flags, but one index.  only one can be used at a time.
 IFS = [
     None,
     '.f32.s32',
@@ -154,6 +151,7 @@ for ifx in range(1, len(IFS)):
     ifs = IFS[ifx]
     gblname = "IFS" + ifs.upper().replace('.','_')
     globals()[gblname] = ifx
+
 
 OF_W         = 1<<8     # Write back to 
 OF_UM        = 1<<9     # Usermode, or if r15 included set current SPSR -> CPSR

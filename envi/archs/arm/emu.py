@@ -55,6 +55,19 @@ class CoProcEmulator:       # useful for prototyping, but should be subclassed
         logger.info("CoProcEmu(%s): mrrc(%r)", self.ident, parms)
 
 
+class FPProcessException(Exception):
+    pass
+
+
+class ITException(Exception):
+    def __init__(self, va, itbase, itsize):
+        self.va = va
+        self.itbase = itbase
+        self.itsize = itsize
+
+    def __repr__(self):
+        return "Error with Thumb IT state: va:0x%x ITSTATE: 0x%x/%x" % (self.va, self.itbase, self.itsize)
+
 def _getRegIdx(idx, mode):
     if idx >= REGS_VECTOR_TABLE_IDX:
         return reg_table[idx]
@@ -133,11 +146,6 @@ conditionals = [
 
 top_bits_32 = [(e_bits.u_maxes[4] ^ ((e_bits.u_maxes[4]>>x))) for x in range(4*8)]
 
-LSB_FMT = [0, 'B', '<H', 0, '<I', 0, 0, 0, '<Q',]
-MSB_FMT = [0, 'B', '>H', 0, '>I', 0, 0, 0, '>Q',]
-LSB_FMT_SIGNED = [0, 'b', '<h', 0, '<i', 0, 0, 0, '<q',]
-MSB_FMT_SIGNED = [0, 'b', '>h', 0, '>i', 0, 0, 0, '>q',]
-
 # SIMD support
 OP_F16 = 1
 OP_F32 = 2
@@ -145,16 +153,29 @@ OP_F64 = 3
 OP_S32 = 4
 OP_U32 = 5
 
-ifs_first_F32 = (IFS_F32_S32 | IFS_F32_U32 | IFS_F32_F64 | IFS_F32_F16)
-ifs_second_F32 = (IFS_S32_F32 | IFS_U32_F32 | IFS_F64_F32 | IFS_F16_F32) 
-ifs_first_S32 = (IFS_S32_F32 | IFS_S32_F64 | IFS_S32_F32)
-ifs_second_S32 = (IFS_F32_S32 | IFS_F64_S32 | IFS_F32_S32)
-ifs_first_U32 = (IFS_U32_F32 | IFS_U32_F64)
-ifs_second_U32 = (IFS_F64_U32 | IFS_F32_U32)
-ifs_first_F64 = (IFS_F64_S32 | IFS_F64_U32 | IFS_F64_F32)
-ifs_second_F64 = (IFS_S32_F64 | IFS_U32_F64 | IFS_F32_F64)
-ifs_first_F16 = IFS_F16_F32
-ifs_second_F16 = IFS_F32_F16
+# ifs_first* and ifs_second* are a way of grouping like-SIMD options based on
+# first or second operand.  since each "flag" indicates *all* operands, we 
+# need a way to group them logically to make decisions about the source(s) and
+# destinations.  these are helpers for i_vcvt()
+
+# NOTE: IFS_* "flags" are not flags, but indices into the IFS list in const.py
+
+ifs_first_F32 = (IFS_F32_S32, IFS_F32_U32, IFS_F32_F64, IFS_F32_F16)
+ifs_second_F32 = (IFS_S32_F32, IFS_U32_F32, IFS_F64_F32, IFS_F16_F32) 
+ifs_first_S32 = (IFS_S32_F32, IFS_S32_F64, IFS_S32_F32)
+ifs_second_S32 = (IFS_F32_S32, IFS_F64_S32, IFS_F32_S32)
+ifs_first_U32 = (IFS_U32_F32, IFS_U32_F64)
+ifs_second_U32 = (IFS_F64_U32, IFS_F32_U32)
+ifs_first_F64 = (IFS_F64_S32, IFS_F64_U32, IFS_F64_F32)
+ifs_second_F64 = (IFS_S32_F64, IFS_U32_F64, IFS_F32_F64)
+ifs_first_F16 = (IFS_F16_F32,)
+ifs_second_F16 = (IFS_F32_F16,)
+
+ifs_first_F32_F64 = ifs_first_F32 + ifs_first_F64
+ifs_first_F32_F64_F16 = ifs_first_F32 + ifs_first_F64 + ifs_first_F16
+
+ifs_second_F32_F64 = ifs_second_F32 + ifs_second_F64
+ifs_second_F32_F64_F16 = ifs_second_F32 + ifs_second_F64 + ifs_second_F16
 
 class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
@@ -168,7 +189,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         self.mem_access_lock = threading.Lock()
 
         # FIXME: this should be None's, and added in for each real coproc... but this will work for now.
-        self.coprocs = [CoProcEmulator(x) for x in xrange(16)]      
+        self.coprocs = [CoProcEmulator(x) for x in range(16)]      
 
         self.int_handlers = {}
 
@@ -215,13 +236,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if len(bytes) != size:
             raise Exception("Read Gave Wrong Length At 0x%.8x (va: 0x%.8x wanted %d got %d)" % (self.getProgramCounter(),addr, size, len(bytes)))
 
-        endian_fmt = (LSB_FMT, MSB_FMT)[self.getEndian()]
-        return struct.unpack(endian_fmt[size], bytes)[0]
+        fmtstr = e_bits.getFormat(size, self.getEndian())
+        return struct.unpack(fmtstr, bytes)[0]
 
     def writeMemValue(self, addr, value, size):
-        endian_fmt = (LSB_FMT, MSB_FMT)[self.getEndian()]
+        fmtstr = e_bits.getFormat(size, self.getEndian())
         mask = e_bits.u_maxes[size]
-        bytes = struct.pack(endian_fmt[size], (value & mask))
+        bytes = struct.pack(fmtstr, (value & mask))
         self.writeMemory(addr, bytes)
 
     def readMemSignedValue(self, addr, size):
@@ -231,8 +252,8 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if len(bytes) != size:
             raise Exception("Read Gave Wrong Length At 0x%.8x (va: 0x%.8x wanted %d got %d)" % (self.getProgramCounter(),addr, size, len(bytes)))
 
-        endian_fmt = (LSB_FMT_SIGNED, MSB_FMT_SIGNED)[self.getEndian()]
-        return struct.unpack(endian_fmt[size], bytes)[0]
+        fmtstr = e_bits.getFormat(size, self.getEndian(), signed=True)
+        return struct.unpack(fmtstr, bytes)[0]
 
     def parseOpcode(self, va, arch=envi.ARCH_DEFAULT):
         '''
@@ -256,25 +277,61 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             self.setMeta('forrealz', True)
             newpc = None
             startpc = self.getProgramCounter()
-            skip = False
        
-            # IT block handling
-            if self.itcount:
-                self.itcount -= 1
+            # IT block handling (THUMB mode only!  Undefined in ARM mode!)
+            # itbase will have the following process (see ARMv7 manual)
+            # [7:5]     [4] [3] [2] [1] [0]
+            # cond_base P1  P2  P3  P4   1   Entry point for 4-instruction IT block
+            # cond_base P1  P2  P3  1    0   Entry point for 3-instruction IT block
+            # cond_base P1  P2  1   0    0   Entry point for 2-instruction IT block
+            # cond_base P1  1   0   0    0   Entry point for 1-instruction IT block
+            #  000      0   0   0   0    0   Normal execution, not in an IT block
 
-                if not (self.itmask & 1):
-                    skip = True
-                self.itmask >>= 1
+            itbase = self.getRegister(REG_IT_BASE)
+            if itbase:
+                # first a few sanity checks.  we'll choose to survive the ARM mode,
+                # but bail on odd IT flags.
+                tmode = self.getFlag(PSR_T_bit)
+                if not tmode:
+                    logger.warn("emulator: 0x%x: %r  IT block in ARM mode", op.va, op)
 
-            # standard conditional handling
-            condval = (op.prefixes >= 0xe)
+                itcount = self.getRegister(REG_IT_SIZE)
+                if not (itcount & 0xf):
+                    logger.warn("log: ITException: 0x%x  0x%x/%x: 0x%x", op.va, self.getRegister(REG_IT_BASE), self.getRegister(REG_IT_SIZE), itcount)
+                    # this is undefined!  should not be here.
+                    raise ITException(op.va, self.getRegister(REG_IT_BASE), self.getRegister(REG_IT_SIZE))
 
-            if not condval:
-                condcheck = conditionals[op.prefixes]
+                p1 = (itcount >> 4) & 1
+
+                # handle housekeeping.  this should keep this clause from happening next 
+                # instruction, but doesn't indicate anything now.
+                itcount <<= 1 
+                if not (itcount & 0xf): # bottom 4 bits must have at least 1 bit set
+                    # when done, reset all the IT flags to 0
+                    self.setRegister(REG_IT_BASE, 0)
+                    self.setRegister(REG_IT_SIZE, 0)
+                else:
+                    self.setRegister(REG_IT_SIZE, itcount)
+
+                # evaluate the expression against the current state
+                firstcond = self.getRegister(REG_IT_BASE)
+                condcheck = conditionals[firstcond]
                 condval = condcheck(self.getRegister(REG_FLAGS))
 
+                # p1 indicates whether we're <firstcond> or <NOT firstcond>
+                if not p1:
+                    condval = not condval
+
+            else:
+                # standard conditional handling
+                condval = (op.prefixes >= 0xe)
+
+                if not condval:
+                    condcheck = conditionals[op.prefixes]
+                    condval = condcheck(self.getRegister(REG_FLAGS))
+
             # the actual execution... if we're supposed to.
-            if condval and not skip:
+            if condval:
                 meth = self.op_methods.get(op.mnem, None)
                 if meth is None:
                     raise envi.UnsupportedInstruction(self, op)
@@ -341,7 +398,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         '''
         set the CPSR for the current ARM processor mode
         '''
-        self.setCPSR(psr, mask=0xffff0000)
+        self.setCPSR(psr, mask=REG_APSR_MASK)
 
     def getSPSR(self, mode):
         '''
@@ -712,20 +769,19 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         # do multiples based on base and count.  unlike ldm, these must be consecutive
         if flags & IF_DAIB_I == IF_DAIB_I:
-            for reg in xrange(count):
+            for reg in range(count):
                 regval = self.readMemValue(addr, size)
                 self.setRegister(reg, regval)
                 addr += size
         else:
-            for reg in xrange(count-1, -1, -1):
+            for reg in range(count-1, -1, -1):
                 addr -= size
                 regval = self.readMemValue(addr, size)
                 self.setRegister(reg, regval)
 
         if updatereg:
             self.setRegister(srcreg,addr)
-        #FIXME: add "shared memory" functionality?  prolly just in ldrex which will be handled in i_ldrex
-        # is the following necessary? 
+        
         newpc = self.getRegister(REG_PC)    # check whether pc has changed
         if pc != newpc:
             self.setThumbMode(newpc & 1)
@@ -801,7 +857,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     def i_vcmpe(self, op):
         try:
-            size = (4,8)[bool(op.iflags & IFS_F64)]
+            size = (4,8)[bool(op.simdflags == IFS_F64)]
 
             src1 = self.getOperValue(op, 0)
             src2 = self.getOperValue(op, 1)
@@ -853,21 +909,21 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             if IsZero(exp):
                 # Produce zero if value is zero
                 if IsZero(frac):
-                    type = FPType_Zero
+                    ftype = FPType_Zero
                     value = 0.0;
                 else:
-                    type = FPType_Nonzero
+                    ftype = FPType_Nonzero
                     value = 2^-14 * (UInt(frac) * 2^-10);
             elif IsOnes(exp) and (fpscr_val>>26)&1 == 0: # Infinity or NaN in IEEE format
                 if IsZero(frac):
-                    type = FPType_Infinity
+                    ftype = FPType_Infinity
                     value = 2^1000000;
                 else:
-                    type = (FPType_SNaN, FPType_QNaN)[(frac>>9)&1]
+                    ftype = (FPType_SNaN, FPType_QNaN)[(frac>>9)&1]
                     value = 0.0
 
             else:
-                type = FPType_Nonzero
+                ftype = FPType_Nonzero
                 value = 2^(UInt(exp)-15) * (1.0 + UInt(frac) * 2^-10);
 
         elif N == 32:
@@ -877,22 +933,22 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             if IsZero(exp):
                 # Produce zero if value is zero or flush-to-zero is selected.
                 if IsZero(frac) or (fpscr_val>>24) & 1 == 1:
-                    type = FPType_Zero
+                    ftype = FPType_Zero
                     value = 0.0
                 if not IsZero(frac): # Denormalized input flushed to zero
                     FPProcessException(FPExc_InputDenorm, fpscr_val);
                 else:
-                    type = FPType_Nonzero
+                    ftype = FPType_Nonzero
                     value = 2^-126 * (UInt(frac) * 2^-23);
             elif IsOnes(exp):
                 if IsZero(frac):
-                    type = FPType_Infinity
+                    ftype = FPType_Infinity
                     value = 2^1000000;
                 else:
-                    type =  (FPType_SNaN, FPType_QNaN)[(frac>>22)&1]
+                    ftype =  (FPType_SNaN, FPType_QNaN)[(frac>>22)&1]
                     value = 0.0;
             else:
-                type = FPType_Nonzero
+                ftype = FPType_Nonzero
                 value = 2^(UInt(exp)-127) * (1.0 + UInt(frac) * 2^-23);
         else: # N == 64
             sign = (fpval>>63) & 1
@@ -901,27 +957,27 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             if IsZero(exp):
                 # Produce zero if value is zero or flush-to-zero is selected.
                 if IsZero(frac) or (fpscr_val>>24) & 1 == 1:
-                    type = FPType_Zero
+                    ftype = FPType_Zero
                     value = 0.0
                     if not IsZero(frac): # Denormalized input flushed to zero
                         FPProcessException(FPExc_InputDenorm, fpscr_val)
                 else:
-                    type = FPType_Nonzero
+                    ftype = FPType_Nonzero
                     value = 2^-1022 * (UInt(frac) * 2^-52)
 
             elif IsOnes(exp):
                 if IsZero(frac):
-                    type = FPType_Infinity
+                    ftype = FPType_Infinity
                     value = 2^1000000
                 else:
-                    type = (FPType_SNaN, FPType_QNaN)[(frac>>51) & 1]
+                    ftype = (FPType_SNaN, FPType_QNaN)[(frac>>51) & 1]
                     value = 0.0
             else:
-                type = FPType_Nonzero 
+                ftype = FPType_Nonzero 
                 value = 2^(UInt(exp)-1023) * (1.0 + UInt(frac) * 2^-52)
 
         if sign == '1': value = -value
-        return (type, sign, value)
+        return (ftype, sign, value)
 
 
     def FPToFixed(operand, M, fraction_bits, unsigned, round_towards_zero, fpscr_controlled):
@@ -933,14 +989,14 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         if round_towards_zero:
             fpscr_val |= 0b00000000110000000000000000000000
 
-        (type,sign,value) = FPUnpack(operand, fpscr_val)
+        (ftype,sign,value) = FPUnpack(operand, fpscr_val)
 
         # For NaNs and infinities, FPUnpack() has produced a value that will round to the
         # required result of the conversion. Also, the value produced for infinities will
         # cause the conversion to overflow and signal an Invalid Operation floating-point
         # exception as required. NaNs must also generate such a floating-point exception.
 
-        if type == FPType_SNaN or type == FPType_QNaN:
+        if ftype == FPType_SNaN or ftype == FPType_QNaN:
             FPProcessException(FPExc_InvalidOp, fpscr_val)
 
         # Scale value by specified number of fraction bits, then start rounding to an integer
@@ -1008,9 +1064,6 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         return result;
 
-    #def i_vcvtr(self, op):
-    #    raise Exception("IMPLEMENT ME: i_vcvtr")
-
     def i_vcvt(self, op):
         '''
         convert each element in a vector as float to int or int to float, 32-bit, round-to-zero/round-to-nearest
@@ -1019,33 +1072,66 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         logger.warn('%r\t%r', op, op.opers)
         logger.warn("complete implementing vcvt")
 
-        srcwidth = op.opers[0].getWidth()
-        regcnt = srcwidth / 4
+        if op.iflags & IF_ADV_SIMD:
+            # this is an Advanced SIMD instruction
+            srcwidth = op.opers[0].getWidth()
+            dstwidth = op.opers[1].getWidth()
+            regcnt = srcwidth / 4
+
+            if len(op.opers) == 3:
+                # 3rd operand is fbits for Fixed Point numbers
+                pass
+
+            else:
+                # it's either Floating Point or Integer
+                pass
+
+        else:
+            # we let the register size sort out the details for non-ADV_SIMD stuff
+            if op.simdflags in ifs_second_F32_F64_F16:
+                val = op.opers[1].getFloatValue(self)
+
+            else:
+                val = op.opers[1].getOperValue(op, self)
+
+
+            if len(op.opers) == 3:
+                # 3rd operand is fbits for Fixed Point numbers
+                pass
+
+            else:
+                # it's either Floating Point or Integer
+                if op.simdflags in ifs_first_F32_F64:
+                    op.opers[0].setFloatValue(self, val)
+                else:
+                    op.opers[0].setOperValue(op, self, val)
+
+
 
         firstOP = None
-        if op.simdflags & ifs_first_F32:
+        if op.simdflags in ifs_first_F32:
             # get first vector element as F32
             firstOP = OP_F32
-        elif op.simdflags & ifs_first_S32:
+        elif op.simdflags in ifs_first_S32:
             firstOP = OP_S32
-        elif op.simdflags & ifs_first_U32:
+        elif op.simdflags in ifs_first_U32:
             firstOP = OP_U32
-        elif op.simdflags & ifs_first_F64:
+        elif op.simdflags in ifs_first_F64:
             firstOP = OP_F64
-        elif op.simdflags & ifs_first_F16:
+        elif op.simdflags in ifs_first_F16:
             firstOP = OP_F16
 
         secOP = None
-        if op.simdflags & ifs_second_F32:
+        if op.simdflags in ifs_second_F32:
             # get second vector element as F32
             secOP = OP_F32
-        elif op.simdflags & ifs_second_S32:
+        elif op.simdflags in ifs_second_S32:
             secOP = OP_S32
-        elif op.simdflags & ifs_second_U32:
+        elif op.simdflags in ifs_second_U32:
             secOP = OP_U32
-        elif op.simdflags & ifs_second_F64:
+        elif op.simdflags in ifs_second_F64:
             secOP = OP_F64
-        elif op.simdflags & ifs_second_F16:
+        elif op.simdflags in ifs_second_F16:
             secOP = OP_F16
 
         raise Exception("IMPLEMENT ME: i_vcvt")
@@ -1053,84 +1139,84 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
             for reg in range(regcnt):
                 #frac_bits = 64 - op.opers[2].val
                 # pA8_870
-                if op.simdflags & IFS_F32_S32:
+                if op.simdflags == IFS_F32_S32:
                     pass
-                elif op.simdflags & IFS_F32_U32:
+                elif op.simdflags == IFS_F32_U32:
                     pass
-                elif op.simdflags & IFS_S32_F32:
+                elif op.simdflags == IFS_S32_F32:
                     pass
-                elif op.simdflags & IFS_U32_F32:
+                elif op.simdflags == IFS_U32_F32:
                     pass
 
                 # pA8_872
-                elif op.simdflags & IFS_U16_F32:
+                elif op.simdflags == IFS_U16_F32:
                     pass
-                elif op.simdflags & IFS_S16_F32:
+                elif op.simdflags == IFS_S16_F32:
                     pass
-                elif op.simdflags & IFS_U32_F32:
+                elif op.simdflags == IFS_U32_F32:
                     pass
-                elif op.simdflags & IFS_S32_F32:
+                elif op.simdflags == IFS_S32_F32:
                     pass
-                elif op.simdflags & IFS_U16_F64:
+                elif op.simdflags == IFS_U16_F64:
                     pass
-                elif op.simdflags & IFS_S16_F64:
+                elif op.simdflags == IFS_S16_F64:
                     pass
-                elif op.simdflags & IFS_U32_F64:
+                elif op.simdflags == IFS_U32_F64:
                     pass
-                elif op.simdflags & IFS_S32_F64:
+                elif op.simdflags == IFS_S32_F64:
                     pass
 
-                elif op.simdflags & IFS_F32_U16:
+                elif op.simdflags == IFS_F32_U16:
                     pass                      
-                elif op.simdflags & IFS_F32_S16:
+                elif op.simdflags == IFS_F32_S16:
                     pass
-                elif op.simdflags & IFS_F32_U32:
+                elif op.simdflags == IFS_F32_U32:
                     pass
-                elif op.simdflags & IFS_F32_S32:
+                elif op.simdflags == IFS_F32_S32:
                     pass
-                elif op.simdflags & IFS_F64_U16:
+                elif op.simdflags == IFS_F64_U16:
                     pass
-                elif op.simdflags & IFS_F64_S16:
+                elif op.simdflags == IFS_F64_S16:
                     pass
-                elif op.simdflags & IFS_F64_U32:
+                elif op.simdflags == IFS_F64_U32:
                     pass
-                elif op.simdflags & IFS_F64_S32:
+                elif op.simdflags == IFS_F64_S32:
                     pass
 
         elif len(op.opers) == 2:
             for reg in range(regcnt):
                 #frac_bits = 64 - op.opers[1].val
                 # pA8_866 (868?)
-                if op.simdflags & IFS_F32_S32:
+                if op.simdflags == IFS_F32_S32:
                     pass
-                elif op.simdflags & IFS_F32_U32:
+                elif op.simdflags == IFS_F32_U32:
                     pass
-                elif op.simdflags & IFS_S32_F32:
+                elif op.simdflags == IFS_S32_F32:
                     pass
-                elif op.simdflags & IFS_U32_F32:
+                elif op.simdflags == IFS_U32_F32:
                     pass
 
                 # pA8-868 (870?)
-                elif op.simdflags & IFS_F64_S32:
+                elif op.simdflags == IFS_F64_S32:
                     pass
-                elif op.simdflags & IFS_F64_U32:
+                elif op.simdflags == IFS_F64_U32:
                     pass
 
-                elif op.simdflags & IFS_S32_F64:
+                elif op.simdflags == IFS_S32_F64:
                     pass
-                elif op.simdflags & IFS_U32_F64:
+                elif op.simdflags == IFS_U32_F64:
                     pass
 
                 # pA8-874
-                elif op.simdflags & IFS_F64_F32:
+                elif op.simdflags == IFS_F64_F32:
                     pass
-                elif op.simdflags & IFS_F32_F64:
+                elif op.simdflags == IFS_F32_F64:
                     pass
 
                 # pA8-876
-                elif op.simdflags & IFS_F16_F32:
+                elif op.simdflags == IFS_F16_F32:
                     pass
-                elif op.simdflags & IFS_F32_F16:
+                elif op.simdflags == IFS_F32_F16:
                     pass
 
         else:
@@ -1161,13 +1247,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
         pc = self.getRegister(REG_PC)       # store for later check
 
         if flags & IF_DAIB_I == IF_DAIB_I:
-            for reg in xrange(16):
+            for reg in range(16):
                 if (1<<reg) & regmask:
                     regval = self.readMemValue(addr, 4)
                     self.setRegister(reg, regval)
                     addr += 4
         else:
-            for reg in xrange(15, -1, -1):
+            for reg in range(15, -1, -1):
                 if (1<<reg) & regmask:
                     addr -= 4
                     regval = self.readMemValue(addr, 4)
@@ -1175,8 +1261,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
         if updatereg:
             self.setRegister(srcreg,addr)
-        #FIXME: add "shared memory" functionality?  prolly just in ldrex which will be handled in i_ldrex
-        # is the following necessary? 
+
         newpc = self.getRegister(REG_PC)    # check whether pc has changed
         if pc != newpc:
             self.setThumbMode(newpc & 1)
@@ -1274,14 +1359,13 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
     i_vldr = i_mov
 
 
-    # TESTME: IT functionality
     def i_it(self, op):
         if self.itcount:
             raise Exception("IT block within an IT block!")
 
-        self.itcount, self.ittype, self.itmask = op.opers[0].getCondData()
-        condcheck = conditionals[self.ittype]
-        self.itva = op.va
+        itbase, itsize = op.opers[0].getITSTATEdata()
+        self.setRegister(REG_IT_BASE, itbase)
+        self.setRegister(REG_IT_SIZE, itsize)
 
     i_ite = i_it
     i_itt = i_it
@@ -1341,7 +1425,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     def i_str(self, op):
         # hint: covers str, strb, strbt, strd, strh, strsh, strsb, strt   (any instr where the syntax is str{condition}stuff)
-        # need to check that t variants only allow non-priveleged access (strt, strht etc)
+        # TODO: need to check that t variants only allow non-priveleged access (strt, strht etc)
         val = self.getOperValue(op, 0)
         self.setOperValue(op, 1, val)
 
@@ -1949,6 +2033,7 @@ class ArmEmulator(ArmRegisterContext, envi.Emulator):
 
     def i_cps(self, op):
         logger.warn("CPS: 0x%x  %r" % (op.va, op))
+        # FIXME: at some point we need ot do a priviledge check
 
     def i_pld2(self, op):
         logger.warn("FIXME: 0x%x: %s - in emu" % (op.va, op))

@@ -1,8 +1,8 @@
 import struct
 
 import envi
+import envi.exc as e_exc
 import envi.memory as e_mem
-import envi.registers as e_reg
 import envi.memcanvas as e_memcanvas
 import envi.memcanvas.renderers as e_rend
 import envi.archs.arm as arm
@@ -27,8 +27,8 @@ from envi.tests.armthumb_tests import advsimdtests
 logger = logging.getLogger(__name__)
 
 
-GOOD_TESTS = 5946
-GOOD_EMU_TESTS = 1174
+GOOD_TESTS = 5953
+GOOD_EMU_TESTS = 1175
 ''' 
   This dictionary will contain all instructions supported by ARM to test
   Fields will contain following information:
@@ -833,6 +833,8 @@ instrs = [
         (REV_ALL_ARM, '173084e6', 0x4560, 'pkhbt r3, r4, r7', 0, ()),
         (REV_ALL_ARM, '573384e6', 0x4560, 'pkhtb r3, r4, r7, asr #6', 0, ()),
         (REV_ALL_ARM, '573084e6', 0x4560, 'pkhtb r3, r4, r7', 0, ()),
+        (REV_ALL_ARM, 'b34fffe6', 0x4560, 'revsh r4, r3', 0, ()),
+        (REV_ALL_ARM, 'b34fbfe6', 0x4560, 'rev16 r4, r3', 0, ()),
         (REV_ALL_ARM, '543007e1', 0x4560, 'qadd r3, r4, r7', 0, ()),
         (REV_ALL_ARM, '173f24e6', 0x4560, 'qadd16 r3, r4, r7', 0, ()),
         (REV_ALL_ARM, '973f24e6', 0x4560, 'qadd8 r3, r4, r7', 0, ()),
@@ -1107,6 +1109,7 @@ instrs = [
         (REV_ALL_ARM, '5434a3e7', 0x4560, 'sbfx r3, r4, #0x08, #0x03', 0, ()),
         (REV_ALL_ARM, '14f713e7', 0x4560, 'sdiv r3, r4, r7', 0, ()),
         (REV_ALL_ARM, '14f733e7', 0x4560, 'udiv r3, r4, r7', 0, ()),
+        (REV_ALL_ARM, '3f5b46ec', 0x4560, 'vmov d31, r5, r6', 0, ()),
         #(REV_ALL_ARM, 'f000f0e7', 0x4560, 'udf #0x00', 0, ()), #This forces an undefined instruction. Commented out normally.
         #all v codes are suspect at this time - not implimented but may not be correct here either
         (REV_ALL_ARM, '173704f2', 0x4560, 'vaba.s8 d3, d4, d7', 0, ()),
@@ -1176,6 +1179,8 @@ instrs = [
         (REV_ALL_ARM, '0e3488f2', 0x4560, 'vaddhn.i16 d3, q4, q7', 0, ()),
         (REV_ALL_ARM, '0e3498f2', 0x4560, 'vaddhn.i32 d3, q4, q7', 0, ()),
         (REV_ALL_ARM, '0e34a8f2', 0x4560, 'vaddhn.i64 d3, q4, q7', 0, ()),
+        (REV_ALL_ARM, 'c3efa544', 0x4561, 'vaddhn.i16 d20, q9, q10', 0, ()),
+        (REV_ALL_ARM, 'e3efa544', 0x4561, 'vaddhn.i64 d20, q9, q10', 0, ()),
         (REV_ALL_ARM, '076084f2', 0x4560, 'vaddl.s8 q3, d4, d7', 0, ()),
         (REV_ALL_ARM, '076094f2', 0x4560, 'vaddl.s16 q3, d4, d7', 0, ()),
         (REV_ALL_ARM, '0760a4f2', 0x4560, 'vaddl.s32 q3, d4, d7', 0, ()),
@@ -1363,8 +1368,8 @@ instrs = [
         (REV_ALL_ARM, '56f6e456', 0x4561, 'movw.w r6, r6, #0x6de4', 0, ()),
         (REV_ALL_ARM, '53f83450', 0x4561, 'ldr.w r5, [r3, r4, lsl #3]', 0, ()),
 
-        #(REV_ALL_ARM, 'a54be3ef', 0x4561, 'vqdmlsl.s32 q10, d19, d21', 0, ()),
-        #(REV_ALL_ARM, 'a54993ef', 0x4561, 'vqdmlal.s16 q2, d19, d21', 0, ()),
+        (REV_ALL_ARM, 'e3efa54b', 0x4561, 'vqdmlsl.s32 q10, d19, d21', 0, ()),
+        (REV_ALL_ARM, '93efa549', 0x4561, 'vqdmlal.s16 q2, d19, d21', 0, ()),
 
         (REV_ALL_ARM, 'aaefe440', 0x4561, 'vmla.i32 d4, d26, d4[1]', 0, ()),
         (REV_ALL_ARM, 'aaefe441', 0x4561, 'vmla.f32 d4, d26, d4[1]', 0, ()),
@@ -1418,18 +1423,17 @@ instrs = [
 
         ]
 instrs.extend(advsimdtests)
-#instrs = advsimdtests
 
 # temp scratch: generated these while testing
 ['0de803c0','8de903c0','ade903c0','2de803c0','1de803c0','3de803c0','9de903c0','bde903c0',]
 ['srsdb.w sp, svc',
          'srsia.w sp, svc',
-          'srsia.w sp!, svc',
-           'srsdb.w sp!, svc',
-            'rfedb.w sp',
-             'rfedb.w sp!',
-              'rfeia.w sp',
-               'rfeia.w sp!']
+         'srsia.w sp!, svc',
+         'srsdb.w sp!, svc',
+         'rfedb.w sp',
+         'rfedb.w sp!',
+         'rfeia.w sp',
+         'rfeia.w sp!']
 
 import struct
 def getThumbStr(val, val2):
@@ -1887,7 +1891,7 @@ class ArmInstructionSet(unittest.TestCase):
             try:
                 # try register first
                 emu.setRegisterByName(tgt, val)
-            except e_reg.InvalidRegisterName, e:
+            except e_exc.InvalidRegisterName, e:
                 # it's not a register
                 if type(tgt) == str and tgt.startswith("PSR_"):
                     # it's a flag
@@ -1912,7 +1916,7 @@ class ArmInstructionSet(unittest.TestCase):
                     success = 0
                 else:  # should be an else
                     raise Exception("FAILED(reg): (%r test#%d)  %s  !=  0x%x (observed: 0x%x) \n\t(setters: %r)\n\t(test: %r)" % (op, tidx, tgt, val, testval, settersrepr, testsrepr))
-            except e_reg.InvalidRegisterName, e:
+            except e_exc.InvalidRegisterName, e:
                 # it's not a register
                 if type(tgt) == str and tgt.startswith("PSR_"):
                     # it's a flag

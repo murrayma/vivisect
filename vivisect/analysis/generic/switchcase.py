@@ -16,6 +16,7 @@ if not len(logger.handlers):
 
 import envi
 import envi.archs.i386 as e_i386
+import envi.const as e_const
 
 import vivisect
 import vivisect.cli as viv_cli
