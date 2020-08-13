@@ -168,7 +168,7 @@ def getFormat(size, big_endian=False, signed=False):
     '''
     Returns the proper struct format for numbers up to 8 bytes in length
     Endianness and Signedness aware.
-
+    
     Only useful for *full individual* numbers... ie. 1, 2, 4, 8.  Numbers
     of 24-bits (3), 40-bit (5), 48-bits (6) or 56-bits (7) are not accounted 
     for here and will return None.

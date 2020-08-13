@@ -24,9 +24,6 @@ def ldict():
 def pdict():
     return collections.defaultdict(ldict)
 
-def guid():
-    return hexlify(os.urandom(16))
-
 class Graph:
 
     '''

@@ -15,6 +15,7 @@ def analyzeFunction(vw, fva):
     then store the module base in metadata as "PIE_ebx", accessible by other analysis modules.
     '''
     if vw.readMemory(fva, 4) == thunk_bx_sig:
+
         # have we already recorded this thunk_bx?
         if vw.getVaSetRow('thunk_bx', fva) != None:
             if vw.verbose: print("ditching thunk_bx: %s")

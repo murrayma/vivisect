@@ -530,6 +530,7 @@ class EnviCli(Cmd):
 
         if len(argv) and argv[0] == "?":
             scripts = getRelScriptsFromPath(self.scriptpaths)
+            scripts.sort()
             self.vprint('Scripts available in script paths:\n\t' + '\n\t'.join(scripts))
             return
 
