@@ -158,7 +158,7 @@ def loadElfIntoWorkspace(vw, elf, filename=None, arch=None, platform=None, filef
     new_functions = []
 
     if arch == None:
-	    arch = getArchName(elf)
+        arch = getArchName(elf)
         if arch is None:
            raise Exception("Unsupported Architecture: %d\n", elf.e_machine)
 
