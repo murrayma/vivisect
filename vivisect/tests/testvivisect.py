@@ -16,6 +16,8 @@ def glen(g):
 
 
 class VivisectTest(unittest.TestCase):
+    maxDiff = None
+
     @classmethod
     def setUpClass(cls):
         cls.chgrp_vw = helpers.getTestWorkspace('linux', 'i386', 'chgrp.llvm')

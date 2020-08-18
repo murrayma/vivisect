@@ -15,7 +15,6 @@ class AnalysisMonitor(viv_monitor.AnalysisMonitor):
 
     def __init__(self, vw, fva):
         viv_monitor.AnalysisMonitor.__init__(self, vw, fva)
-        self.addDynamicBranchHandler(vag_switch.analyzeJmp)
         self.retbytes = None
         self.badops = vw.arch.archGetBadOps()
 
