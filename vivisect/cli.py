@@ -2,6 +2,7 @@
 The vivisect CLI.
 """
 
+import re
 import sys
 import shlex
 import pprint
@@ -195,7 +196,6 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
         if not line:
             return self.do_help('names')
 
-        import re
         regex = re.compile(line, re.I)
         for va,name in self.getNames():
             if regex.search(name):
@@ -827,14 +827,110 @@ class VivCli(e_cli.EnviCli, vivisect.VivWorkspace):
                 else:
                     offset = int(argv[2])
 
-            import vivisect.analysis.generic.switchcase as vags; reload(vags)
-            import vivisect.analysis.generic.codeblocks as vagc; reload(vagc)
-            vags.makeSwitch(self, jmpva, count, offset)
+            import vivisect.analysis.generic.symswitchcase as vagss
+            import vivisect.analysis.generic.codeblocks as vagc
+            vagss.makeSwitch(self, jmpva, count, offset)
             funcva = self.getFunction(jmpva)
             vagc.analyzeFunction(self, funcva)
         except ValueError, e:
             print e
             return self.do_help("switch")
+
+    def do_m_switch_ptr(self, line):
+        '''
+        Wire up a switch-case based on an array of pointers
+
+        Usage: m_switch_ptr <jmp_va> <array_va> <count> [offset]
+            where:
+                jmp_va  - the va of the  "jmp reg" instruction
+                array_va - the location of the first pointer in the array
+                count   - number of switch case indices are covered by this switch case jmp
+                offset  - first switch case index.
+            
+            eg: switch case handles i == 32 thru 47, count = 16, offset = 32
+        '''
+        if not line:
+            return self.do_help("m_switch_ptr")
+
+        argv = e_cli.splitargs(line)
+        if len(argv) < 2:
+            return self.do_help("m_switch_ptr")
+
+        offset = 0
+        try:
+            jmpva = int(argv[0], 0)
+            array = int(argv[1], 0)
+            count = int(argv[2], 0)
+
+            if len(argv) == 4:
+                offset = int(argv[2], 0)
+            else:
+                offset = 0
+
+            import vivisect.analysis.generic.symswitchcase as vagss
+            import vivisect.analysis.generic.codeblocks as vagc
+            vagss.link_up(self, jmpva, array, count, offset)
+            funcva = self.getFunction(jmpva)
+            vagc.analyzeFunction(self, funcva)
+        except ValueError, e:
+            print e
+            return self.do_help("m_switch_ptr")
+
+    def do_m_switch_off(self, line):
+        '''
+        Wire up a switch-case based on an array of pointers
+
+        Usage: m_switch_off <jmp_va> <array_va> <count> [baseva] [size] [offset]
+            where:
+                jmp_va  - the va of the  "jmp reg" instruction
+                array_va - the location of the first pointer in the array
+                count   - number of switch case indices are covered by this switch case jmp
+                baseva  - add the offset to this address (eg. _GOT_)
+                size    - size (default: pointer size)
+                offset  - first switch case index.
+            
+            eg: switch case handles i == 32 thru 47, count = 16, offset = 32
+        '''
+        if not line:
+            return self.do_help("m_switch_off")
+
+        argv = e_cli.splitargs(line)
+        if len(argv) < 2:
+            return self.do_help("m_switch_off")
+
+        offset = 0
+        try:
+            jmpva = self.parseExpression(argv[0])
+            array = self.parseExpression(argv[1])
+            count = self.parseExpression(argv[2])
+
+            if len(argv) > 3:
+                baseva = self.parseExpression(argv[3])
+            else:
+                baseva = 0
+
+            if len(argv) > 4:
+                size = self.parseExpression(argv[4])
+            else:
+                size = None
+
+            if len(argv) > 5:
+                offset = self.parseExpression(argv[5])
+            else:
+                offset = 0
+
+            # link up the switchcase using data provided
+            import vivisect.analysis.generic.symswitchcase as vagss
+            import vivisect.analysis.generic.codeblocks as vagc
+            vagss.link_up(self, jmpva, array, count, offset, baseva, size)
+
+            # reanalyze codeblocks for the function (since it should have changed)
+            funcva = self.getFunction(jmpva)
+            vagc.analyzeFunction(self, funcva)
+
+        except ValueError, e:
+            print e
+            return self.do_help("m_switch_off")
 
     def do_plt(self, line):
         '''
