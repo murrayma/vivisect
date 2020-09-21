@@ -24,11 +24,21 @@ defconfig = {
             },
             'ihex':{
                 'arch':'',
+                'bigend':False,
+            },
+            'vbf':{
+                'arch':'',
+                'bigend':False,
             },
         },
         'analysis':{
             'pointertables':{
                 'table_min_len':4,
+            },
+        },
+        'arch':{
+            'ppc':{
+                'options':'spe'
             },
         },
     },
@@ -63,6 +73,7 @@ docconfig = {
             },
             'ihex':{
                 'arch':'What architecture is the ihex dump?',
+                'bigend':'Is the architecture Big-Endian (MSB)?',
             },
         },
 

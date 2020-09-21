@@ -1,5 +1,6 @@
 import os
 
+import vivisect.const as v_const
 import vivisect.parsers as viv_parsers
 import vstruct.defs.macho as vs_macho
 
@@ -12,15 +13,6 @@ def parseFile(vw, filename, baseaddr=None):
 
 def parseBytes(vw, filebytes, baseaddr=None):
     return _loadMacho(vw, filebytes, baseaddr=baseaddr)
-
-
-archcalls = {
-    'i386': 'cdecl',
-    'amd64': 'sysvamd64call',
-    'arm': 'armcall',
-    'thumb': 'armcall',
-    'thumb16': 'armcall',
-}
 
 def _loadMacho(vw, filebytes, filename=None, baseaddr=None):
 
@@ -77,7 +69,7 @@ def _loadMacho(vw, filebytes, filename=None, baseaddr=None):
     vw.setMeta("Platform", "Darwin")
     vw.setMeta("Format", "macho")
 
-    vw.setMeta('DefaultCall', archcalls.get(arch,'unknown'))
+    vw.setMeta('DefaultCall', v_const.archcalls.get(arch,'unknown'))
 
     # Add the file entry
 
